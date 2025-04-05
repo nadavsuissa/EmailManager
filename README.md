@@ -1,123 +1,165 @@
 # Email Manager
 
-A modern email management system that uses AI to extract tasks from emails, analyze priorities, and generate follow-up messages. The application supports both Hebrew and English content.
+A task management system that can process emails and extract tasks. Built with Node.js, Express, Firebase, and React.
 
 ## Project Structure
 
-The project is organized into the following main directories:
+```
+/
+├── client/              # React frontend application
+├── server/              # Express backend API
+├── functions/           # Firebase Cloud Functions
+└── shared/              # Shared code between client, server and functions
+```
 
-- `client/`: React-based frontend application
-- `server/`: Node.js/Express backend server
-- `functions/`: Firebase Cloud Functions
-- `shared/`: Shared code, types, and configurations used across all parts of the application
+## Features
+
+- Process emails and extract tasks using AI
+- Task management with priorities
+- User authentication with Firebase
+- Multi-language support (English and Hebrew)
+- Admin dashboard for managing users and tasks
 
 ## Setup
 
 ### Prerequisites
 
-- Node.js (v14 or higher)
+- Node.js (v14+)
 - npm or yarn
-- Firebase CLI (for deploying functions)
+- Firebase account
 - OpenAI API key
 
-### Environment Configuration
+### Environment Variables
 
-1. Copy the example environment file:
-```bash
-cp shared/config/.env.example .env
+Create a `.env` file in the root directory with the following variables:
+
 ```
+# Server
+PORT=5000
+NODE_ENV=development
+CORS_ORIGIN=http://localhost:3000
 
-2. Edit the `.env` file and fill in your API keys and configuration values
+# Firebase
+FIREBASE_PROJECT_ID=your-firebase-project-id
+FIREBASE_DATABASE_URL=https://your-firebase-project.firebaseio.com
+FIREBASE_STORAGE_BUCKET=your-firebase-project.appspot.com
+FIREBASE_SERVICE_ACCOUNT={"type":"service_account",...} # JSON as string
+
+# OpenAI
+OPENAI_API_KEY=your-openai-api-key
+```
 
 ### Installation
 
-1. Install dependencies in all parts of the application:
+1. Clone the repository
+   ```
+   git clone https://github.com/yourusername/email-manager.git
+   cd email-manager
+   ```
 
-```bash
-# Install root dependencies
-npm install
+2. Install dependencies
+   ```
+   npm install
+   ```
 
-# Install client dependencies
-cd client
-npm install
+3. Install client dependencies
+   ```
+   cd client
+   npm install
+   cd ..
+   ```
 
-# Install server dependencies
-cd ../server
-npm install
+4. Install server dependencies
+   ```
+   cd server
+   npm install
+   cd ..
+   ```
 
-# Install functions dependencies
-cd ../functions
-npm install
-```
-
-2. Build the shared modules (if needed):
-
-```bash
-cd shared
-npm install
-npm run build
-```
+5. Install Firebase Functions dependencies
+   ```
+   cd functions
+   npm install
+   cd ..
+   ```
 
 ### Running the Application
 
 #### Development Mode
 
-1. Start the client:
-```bash
-cd client
-npm start
-```
+1. Start the server
+   ```
+   cd server
+   npm run dev
+   ```
 
-2. Start the server:
-```bash
-cd server
-npm run dev
-```
+2. Start the client
+   ```
+   cd client
+   npm start
+   ```
 
-3. Emulate Firebase functions (optional):
-```bash
-cd functions
-npm run serve
-```
+3. For Firebase Functions development, use the Firebase emulator
+   ```
+   cd functions
+   npm run serve
+   ```
 
-#### Production Mode
+#### Production Build
 
-1. Build the client:
-```bash
-cd client
-npm run build
-```
+1. Build the client
+   ```
+   cd client
+   npm run build
+   ```
 
-2. Build the server:
-```bash
-cd server
-npm run build
-```
+2. Build the server
+   ```
+   cd server
+   npm run build
+   ```
 
-3. Deploy Firebase functions:
-```bash
-cd functions
-npm run deploy
-```
+3. Deploy Firebase Functions
+   ```
+   cd functions
+   npm run deploy
+   ```
 
-## Features
+## API Documentation
 
-- Task extraction from email content with AI
-- Priority analysis for extracted tasks
-- Automated follow-up email generation
-- Support for both Hebrew and English content
-- Real-time updates with Firebase
-- Secure authentication and data storage
+### Authentication Endpoints
 
-## Architecture
+- `POST /api/users/register`: Register a new user
+- `POST /api/users/login`: User login
+- `POST /api/users/password-reset`: Request password reset
+- `GET /api/users/me`: Get current user profile
+- `PUT /api/users/me`: Update current user profile
 
-The application follows a modular architecture:
+### Task Endpoints
 
-1. **Client**: React-based frontend that provides the user interface
-2. **Server**: Node.js/Express backend that handles API requests and business logic
-3. **Firebase Functions**: Serverless functions for processing email content with OpenAI
-4. **Shared Module**: Common code shared between client, server, and functions
+- `GET /api/tasks`: Get all tasks for current user
+- `GET /api/tasks/:id`: Get a single task by ID
+- `POST /api/tasks`: Create a new task
+- `PUT /api/tasks/:id`: Update a task
+- `DELETE /api/tasks/:id`: Delete a task
+- `PUT /api/tasks/:id/complete`: Mark a task as complete
+- `PUT /api/tasks/:id/reopen`: Reopen a completed task
+- `PUT /api/tasks/:id/priority`: Change task priority
+
+## Technologies
+
+- **Frontend**: React, TypeScript, MaterialUI, i18next
+- **Backend**: Node.js, Express, TypeScript
+- **Database**: Firebase Firestore
+- **Authentication**: Firebase Authentication
+- **Functions**: Firebase Cloud Functions
+- **AI**: OpenAI API for natural language processing
+- **Hosting**: Firebase Hosting
 
 ## License
 
-This project is licensed under the MIT License - see the LICENSE file for details. 
+This project is licensed under the MIT License - see the LICENSE file for details.
+
+## Contributors
+
+Your Name - Initial work - [YourGitHub](https://github.com/yourusername) 

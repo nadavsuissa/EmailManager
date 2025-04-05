@@ -1,51 +1,49 @@
 import * as admin from 'firebase-admin';
-import dotenv from 'dotenv';
+import { config } from '../config/env';
 
-dotenv.config();
+/**
+ * Initialize Firebase Admin SDK for server-side operations
+ * Used for:
+ * - Authentication verification
+ * - Firestore database access
+ * - Cloud Storage access
+ */
 
-// Path to service account file from environment variable
-// In production, use environment variables directly
-let serviceAccount;
+// Check if the app has already been initialized
+let firebaseApp: admin.app.App;
+
 try {
-  // For local development, try to load from a file
-  if (process.env.GOOGLE_APPLICATION_CREDENTIALS) {
-    serviceAccount = require(process.env.GOOGLE_APPLICATION_CREDENTIALS);
-  } else {
-    // For production, use environment variables
-    serviceAccount = {
-      type: process.env.FIREBASE_TYPE,
-      project_id: process.env.FIREBASE_PROJECT_ID,
-      private_key_id: process.env.FIREBASE_PRIVATE_KEY_ID,
-      private_key: process.env.FIREBASE_PRIVATE_KEY?.replace(/\\n/g, '\n'),
-      client_email: process.env.FIREBASE_CLIENT_EMAIL,
-      client_id: process.env.FIREBASE_CLIENT_ID,
-      auth_uri: process.env.FIREBASE_AUTH_URI,
-      token_uri: process.env.FIREBASE_TOKEN_URI,
-      auth_provider_x509_cert_url: process.env.FIREBASE_AUTH_PROVIDER_X509_CERT_URL,
-      client_x509_cert_url: process.env.FIREBASE_CLIENT_X509_CERT_URL,
-    };
-  }
+  // Try to get the default app, which will throw if it doesn't exist
+  firebaseApp = admin.app();
 } catch (error) {
-  console.error('Error loading Firebase service account:', error);
-  process.exit(1);
-}
-
-// Initialize Firebase Admin
-if (!admin.apps.length) {
-  admin.initializeApp({
-    credential: admin.credential.cert(serviceAccount),
-    storageBucket: process.env.FIREBASE_STORAGE_BUCKET,
+  // Initialize Firebase admin if not already initialized
+  const serviceAccount = config.firebase.serviceAccount;
+  
+  if (!serviceAccount) {
+    console.error('Firebase service account is not configured');
+    process.exit(1);
+  }
+  
+  firebaseApp = admin.initializeApp({
+    credential: admin.credential.cert(serviceAccount as admin.ServiceAccount),
+    databaseURL: config.firebase.databaseURL,
+    storageBucket: config.firebase.storageBucket
   });
+  
+  console.log('Firebase Admin initialized');
 }
 
-// Get Firestore instance with settings optimized for Hebrew text
-const db = admin.firestore();
-db.settings({
-  ignoreUndefinedProperties: true,
-});
+// Export Firebase services
+export const auth = admin.auth();
+export const firestore = admin.firestore();
+export const storage = admin.storage();
+export const messaging = admin.messaging();
 
-// Initialize other Firebase Admin services
-const auth = admin.auth();
-const storage = admin.storage();
+// Helper for Firestore timestamp
+export const timestamp = admin.firestore.FieldValue.serverTimestamp;
+export const increment = admin.firestore.FieldValue.increment;
+export const arrayUnion = admin.firestore.FieldValue.arrayUnion;
+export const arrayRemove = admin.firestore.FieldValue.arrayRemove;
 
-export { admin, db, auth, storage }; 
+// Export the admin instance
+export default admin; 
