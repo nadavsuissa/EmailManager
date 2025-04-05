@@ -9,10 +9,11 @@ import { errorHandler } from './middleware/errorHandler';
 
 // Import routes
 import userRoutes from './routes/user.routes';
-import taskRoutes from './routes/task.routes';
+import authRoutes from './routes/auth.routes';
 import emailRoutes from './routes/email.routes';
 import aiRoutes from './routes/ai.routes';
 import teamRoutes from './routes/team.routes';
+import taskRoutes from './routes/task.routes';
 import webhookRoutes from './routes/webhook.routes';
 
 // Initialize Express app
@@ -77,10 +78,11 @@ app.get('/health', (req, res) => {
 
 // Register API routes
 app.use('/api/users', userRoutes);
-app.use('/api/tasks', taskRoutes);
-app.use('/api/emails', emailRoutes);
+app.use('/api/auth', authRoutes);
+app.use('/api/email', emailRoutes);
 app.use('/api/ai', aiRoutes);
 app.use('/api/teams', teamRoutes);
+app.use('/api/tasks', taskRoutes);
 app.use('/api/webhooks', webhookRoutes);
 
 // 404 route for undefined routes
