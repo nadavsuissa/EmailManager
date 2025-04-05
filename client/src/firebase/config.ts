@@ -2,19 +2,28 @@ import { initializeApp } from 'firebase/app';
 import { getAuth } from 'firebase/auth';
 import { getFirestore, initializeFirestore } from 'firebase/firestore';
 import { getStorage } from 'firebase/storage';
+import { getFunctions } from 'firebase/functions';
+import config from '../../shared/config/env';
 
-// Your web app's Firebase configuration
+// Your web app's Firebase configuration from environment
 const firebaseConfig = {
-  apiKey: process.env.REACT_APP_FIREBASE_API_KEY,
-  authDomain: process.env.REACT_APP_FIREBASE_AUTH_DOMAIN,
-  projectId: process.env.REACT_APP_FIREBASE_PROJECT_ID,
-  storageBucket: process.env.REACT_APP_FIREBASE_STORAGE_BUCKET,
-  messagingSenderId: process.env.REACT_APP_FIREBASE_MESSAGING_SENDER_ID,
-  appId: process.env.REACT_APP_FIREBASE_APP_ID,
+  apiKey: config.firebase.apiKey,
+  authDomain: config.firebase.authDomain,
+  projectId: config.firebase.projectId,
+  storageBucket: config.firebase.storageBucket,
+  messagingSenderId: config.firebase.messagingSenderId,
+  appId: config.firebase.appId,
 };
 
+// Log warning if Firebase config is incomplete
+if (!firebaseConfig.apiKey || !firebaseConfig.projectId) {
+  console.warn(
+    'Firebase configuration is incomplete. Make sure you have set the required environment variables.'
+  );
+}
+
 // Initialize Firebase
-const app = initializeApp(firebaseConfig);
+export const app = initializeApp(firebaseConfig);
 
 // Initialize Firestore with settings optimized for Hebrew text
 initializeFirestore(app, {
@@ -22,12 +31,16 @@ initializeFirestore(app, {
 });
 
 // Get Firestore instance
-const db = getFirestore(app);
+export const db = getFirestore(app);
 
 // Initialize Firebase Auth
-const auth = getAuth(app);
+export const auth = getAuth(app);
 
 // Initialize Firebase Storage
-const storage = getStorage(app);
+export const storage = getStorage(app);
 
-export { app, db, auth, storage }; 
+// Initialize Firebase Functions
+export const functions = getFunctions(app);
+
+// Export all Firebase services
+export { firebaseConfig }; 

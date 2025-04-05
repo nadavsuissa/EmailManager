@@ -1,35 +1,26 @@
 {
   "name": "email-manager",
   "version": "1.0.0",
-  "description": "AI-powered email management system with task extraction",
+  "description": "Email Management System with AI Task Extraction",
   "main": "index.js",
   "scripts": {
-    "install:all": "npm install && npm run install:client && npm run install:server && npm run install:functions",
-    "install:client": "cd client && npm install",
-    "install:server": "cd server && npm install",
-    "install:functions": "cd functions && npm install",
-    "dev": "concurrently \"npm run dev:client\" \"npm run dev:server\"",
-    "dev:client": "cd client && npm start",
-    "dev:server": "cd server && npm run dev",
-    "dev:functions": "cd functions && npm run serve",
-    "build": "npm run build:client && npm run build:server",
-    "build:client": "cd client && npm run build",
-    "build:server": "cd server && npm run build",
-    "deploy:functions": "cd functions && npm run deploy",
-    "setup:env": "cp shared/config/.env.example .env && echo 'Created .env file, please update with your API keys'",
+    "start": "concurrently \"npm run server\" \"npm run client\"",
+    "client": "cd client && npm start",
+    "server": "cd server && npm run dev",
+    "install:all": "npm install && cd client && npm install && cd ../server && npm install",
+    "build": "cd client && npm run build",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
   "keywords": [
     "email",
-    "task-management",
-    "openai",
-    "firebase",
-    "hebrew",
-    "rtl"
+    "task",
+    "management",
+    "ai",
+    "hebrew"
   ],
   "author": "",
-  "license": "MIT",
+  "license": "ISC",
   "devDependencies": {
-    "concurrently": "^8.2.0"
+    "concurrently": "^8.2.2"
   }
-} 
+}

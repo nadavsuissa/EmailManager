@@ -5,12 +5,11 @@ import morgan from 'morgan';
 import compression from 'compression';
 import { rateLimit } from 'express-rate-limit';
 import cookieParser from 'cookie-parser';
-import config from '../../shared/config/env';
+import { config } from './config/env';
 import { errorHandler } from './middleware/errorHandler';
 import { authMiddleware } from './middleware/authMiddleware';
 import apiRoutes from './routes';
 import app from './app';
-import { config } from './config/env';
 import * as emailService from './services/email.service';
 
 // Initialize Express app
@@ -70,15 +69,15 @@ app.get('/health', (req, res) => {
 app.use(errorHandler);
 
 // Start the server
-const server = app.listen(PORT, async () => {
-  console.log(`Server running on port ${PORT}`);
+const server = app.listen(PORT, () => {
+  console.log(`Server is running on port ${PORT}`);
   
   // Initialize email listeners
   try {
-    await emailService.initializeEmailListeners();
+    emailService.initializeEmailListeners();
     console.log('Email listeners initialized');
   } catch (error) {
-    console.error('Error initializing email listeners:', error);
+    console.error('Failed to initialize email listeners:', error);
   }
 });
 
@@ -87,7 +86,7 @@ process.on('SIGTERM', () => {
   console.log('SIGTERM signal received: closing HTTP server');
   
   // Disconnect email listeners
-  emailService.shutdownEmailConnections();
+  emailService.disconnectAllEmailAccounts();
   
   server.close(() => {
     console.log('HTTP server closed');
@@ -99,7 +98,7 @@ process.on('SIGINT', () => {
   console.log('SIGINT signal received: closing HTTP server');
   
   // Disconnect email listeners
-  emailService.shutdownEmailConnections();
+  emailService.disconnectAllEmailAccounts();
   
   server.close(() => {
     console.log('HTTP server closed');

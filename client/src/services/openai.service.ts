@@ -1,7 +1,7 @@
 import { getFunctions, httpsCallable } from 'firebase/functions';
 import { app } from '../firebase/config';
-import config from '../../../shared/config/env';
-import { TaskExtractionResult } from '../../../shared/services/openai.types';
+import config from '../../shared/config/env';
+import { TaskExtractionResult } from '../../shared/services/openai.types';
 
 // Initialize Firebase Functions
 const functions = getFunctions(app);
