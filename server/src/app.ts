@@ -13,6 +13,7 @@ import taskRoutes from './routes/task.routes';
 import emailRoutes from './routes/email.routes';
 import aiRoutes from './routes/ai.routes';
 import teamRoutes from './routes/team.routes';
+import webhookRoutes from './routes/webhook.routes';
 
 // Initialize Express app
 const app = express();
@@ -80,6 +81,7 @@ app.use('/api/tasks', taskRoutes);
 app.use('/api/emails', emailRoutes);
 app.use('/api/ai', aiRoutes);
 app.use('/api/teams', teamRoutes);
+app.use('/api/webhooks', webhookRoutes);
 
 // 404 route for undefined routes
 app.use('*', (req, res) => {

@@ -10,8 +10,8 @@ router.use(authenticate);
 
 // Task extraction and analysis
 router.post('/extract-tasks', aiController.extractTasks);
-router.post('/analyze-email', aiController.analyzeEmail);
-router.post('/analyze-priority', aiController.analyzeTaskPriority);
+router.get('/extract-tasks/email/:emailId', aiController.extractTasksFromEmail);
+router.post('/analyze-priorities', aiController.analyzeTaskPriorities);
 
 // Email generation
 router.post('/generate-followup', aiController.generateFollowupEmail);
@@ -21,5 +21,8 @@ router.post('/generate-response', aiController.generateResponseToEmail);
 router.post('/summarize', aiController.summarizeText);
 router.post('/detect-language', aiController.detectLanguage);
 router.post('/translate', aiController.translateText);
+
+// New route for parsing date
+router.post('/parse-date', aiController.parseDate);
 
 export default router; 

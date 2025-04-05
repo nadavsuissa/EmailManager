@@ -11,9 +11,10 @@ import { authMiddleware } from './middleware/authMiddleware';
 import apiRoutes from './routes';
 import app from './app';
 import { config } from './config/env';
+import * as emailService from './services/email.service';
 
 // Initialize Express app
-const PORT = config.port || 5000;
+const PORT = config.server.port || 3000;
 
 // Middleware setup
 // Security headers
@@ -69,29 +70,40 @@ app.get('/health', (req, res) => {
 app.use(errorHandler);
 
 // Start the server
-const server = app.listen(PORT, () => {
-  console.log(`✅ Server running in ${config.environment} mode on port ${PORT}`);
-  console.log(`🔗 API available at http://localhost:${PORT}/api`);
-  console.log(`🏥 Health check at http://localhost:${PORT}/health`);
+const server = app.listen(PORT, async () => {
+  console.log(`Server running on port ${PORT}`);
+  
+  // Initialize email listeners
+  try {
+    await emailService.initializeEmailListeners();
+    console.log('Email listeners initialized');
+  } catch (error) {
+    console.error('Error initializing email listeners:', error);
+  }
 });
 
-// Handle unhandled promise rejections
-process.on('unhandledRejection', (err: any) => {
-  console.error('UNHANDLED REJECTION! 💥 Shutting down...');
-  console.error(err.name, err.message);
+// Handle graceful shutdown
+process.on('SIGTERM', () => {
+  console.log('SIGTERM signal received: closing HTTP server');
   
-  // Close server & exit process
+  // Disconnect email listeners
+  emailService.shutdownEmailConnections();
+  
   server.close(() => {
-    process.exit(1);
+    console.log('HTTP server closed');
+    process.exit(0);
   });
 });
 
-// Handle SIGTERM signal (e.g., from Heroku or Docker)
-process.on('SIGTERM', () => {
-  console.log('👋 SIGTERM RECEIVED. Shutting down gracefully');
+process.on('SIGINT', () => {
+  console.log('SIGINT signal received: closing HTTP server');
+  
+  // Disconnect email listeners
+  emailService.shutdownEmailConnections();
   
   server.close(() => {
-    console.log('💥 Process terminated!');
+    console.log('HTTP server closed');
+    process.exit(0);
   });
 });
 

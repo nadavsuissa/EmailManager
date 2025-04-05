@@ -1,127 +1,370 @@
 /**
- * Task extraction result interface
+ * Types for OpenAI task extraction with Hebrew support
  */
+
+export interface TaskBase {
+  description: string;
+  priority?: 'low' | 'medium' | 'high' | 'urgent';
+  deadline?: string; // ISO date string
+  assignTo?: string;
+  notes?: string;
+  status?: 'pending' | 'in_progress' | 'completed' | 'cancelled';
+  language?: 'he' | 'en';
+}
+
+export interface Task extends TaskBase {
+  id: string;
+  createdAt: string; // ISO date string
+  updatedAt: string; // ISO date string
+  createdBy: string;
+  extracted: boolean; // Was this extracted from email
+  emailId?: string; // Reference to source email
+  sourceType: 'email' | 'manual' | 'imported';
+}
+
 export interface TaskExtractionResult {
-  success: boolean;
-  task?: {
-    title: string;
-    description: string;
-    dueDate: string | null;
-    priority: 'low' | 'medium' | 'high' | 'urgent' | 'נמוכה' | 'בינונית' | 'גבוהה' | 'דחופה';
-    tags: string[];
-    containsTask: boolean;
-  };
-  error?: string;
-  rawResponse?: string;
+  tasks: TaskBase[];
+  confidence: number; // 0-1 score of extraction confidence
+  language: 'he' | 'en';
+  suggestedFollowup?: string;
+  originalText?: string;
 }
 
-/**
- * Task priority analysis result interface
- */
+export interface HebrewDateInfo {
+  gregorianDate: string; // ISO date string
+  hebrewDate: string; // Hebrew date representation
+  dayOfWeek: string;
+  isRecognizedHoliday: boolean;
+  holidayName?: string;
+}
+
+export interface PriorityAnalysisItem {
+  taskIndex: number;
+  priority: 'low' | 'medium' | 'high' | 'urgent';
+  reasoning: string;
+}
+
 export interface PriorityAnalysisResult {
-  success: boolean;
-  analysis?: {
-    priority: 'low' | 'medium' | 'high' | 'urgent' | 'נמוכה' | 'בינונית' | 'גבוהה' | 'דחופה';
-    reminderFrequency: 'daily' | 'weekly' | 'custom';
-    customReminderDays: number;
-    reasoning: string;
-  };
-  error?: string;
-  rawResponse?: string;
+  priorities: PriorityAnalysisItem[];
+  language: 'he' | 'en';
 }
 
-/**
- * Follow-up email generation result interface
- */
 export interface FollowupEmailResult {
-  success: boolean;
-  email?: {
-    subject: string;
-    body: string;
-  };
-  error?: string;
-  rawResponse?: string;
+  subject: string;
+  emailContent: string;
+  sentiment: 'neutral' | 'urgent' | 'friendly' | 'formal';
+  language: 'he' | 'en';
 }
 
 /**
- * Shared prompt templates for system messages (Hebrew and English)
+ * System prompts for different AI tasks
  */
 export const SYSTEM_PROMPTS = {
+  // Task extraction prompt with Hebrew support
   TASK_EXTRACTION: {
-    he: 'אתה עוזר מומחה שמזהה ומחלץ משימות מתוך תוכן אימייל. תחלץ את הפרטים הבאים: כותרת המשימה, תיאור, תאריך יעד (אם מצוין), רמת עדיפות (נמוכה, בינונית, גבוהה, דחופה), ותגיות רלוונטיות. אם האימייל אינו מכיל משימה, ציין זאת.',
-    en: 'You are an expert assistant that identifies and extracts tasks from email content. Extract the following details: task title, description, due date (if specified), priority level (low, medium, high, urgent), and relevant tags. If the email does not contain a task, indicate that.'
+    he: `אתה עוזר מקצועי המומחה בחילוץ משימות מתוך תכני אימייל בעברית. 
+    תפקידך הוא לזהות משימות ברורות ומרומזות מתוך הטקסט.
+    עבור כל משימה, זהה את המידע הבא אם קיים:
+    1. תיאור המשימה
+    2. דדליין או תאריך יעד (זיהוי תאריכים בפורמט עברי ולועזי)
+    3. סדר עדיפות (גבוה, בינוני, נמוך, דחוף)
+    4. למי המשימה מיועדת
+    5. הערות נוספות
+
+    החזר את התשובה בפורמט JSON בלבד בפורמט הבא:
+    {
+      "tasks": [
+        {
+          "description": "תיאור המשימה",
+          "deadline": "YYYY-MM-DD",
+          "priority": "high/medium/low/urgent",
+          "assignTo": "שם האדם",
+          "notes": "הערות נוספות"
+        }
+      ],
+      "confidence": 0.8,
+      "language": "he",
+      "suggestedFollowup": "הצעה למעקב"
+    }
+
+    זיהוי תאריכים עבריים: כאשר מופיעים ביטויים כמו "עד יום ראשון", "עד מחר", "בעוד שבוע", "בעוד חודש", "עד סוף השבוע", המר אותם לפורמט ISO תאריך YYYY-MM-DD.
+    אם לא מצאת משימה, החזר מערך ריק של משימות.
+    הערך confidence צריך לשקף את רמת הביטחון שלך בזיהוי המשימות (0-1).`,
+
+    en: `You are a professional assistant specialized in extracting tasks from email content.
+    Your job is to identify clear and implied tasks from text.
+    For each task, identify the following information if present:
+    1. Task description
+    2. Deadline or due date
+    3. Priority level (high, medium, low, urgent)
+    4. Who the task is assigned to
+    5. Additional notes
+
+    Return your answer in JSON format only as follows:
+    {
+      "tasks": [
+        {
+          "description": "Task description",
+          "deadline": "YYYY-MM-DD",
+          "priority": "high/medium/low/urgent",
+          "assignTo": "Person's name",
+          "notes": "Additional notes"
+        }
+      ],
+      "confidence": 0.8,
+      "language": "en",
+      "suggestedFollowup": "suggestion for follow-up"
+    }
+
+    Date recognition: When expressions like "by Sunday", "by tomorrow", "in a week", "in a month", "by the end of the week" appear, convert them to ISO date format YYYY-MM-DD.
+    If you don't find any tasks, return an empty array of tasks.
+    The confidence value should reflect your confidence level in identifying the tasks (0-1).`
   },
+
+  // Priority analysis prompt
   PRIORITY_ANALYSIS: {
-    he: 'אתה עוזר מומחה שמנתח משימות וקובע את רמת העדיפות והדחיפות שלהן.',
-    en: 'You are an expert assistant that analyzes tasks and determines their priority and urgency.'
+    he: `אתה עוזר מקצועי המתמחה בניתוח וקביעת סדרי עדיפויות למשימות.
+    קבל רשימה של תיאורי משימות ונתח את רמת העדיפות המתאימה לכל אחת.
+    השתמש ברמות העדיפות הבאות: נמוך, בינוני, גבוה, דחוף.
+    
+    הגורמים שיש לשקול:
+    1. דחיפות - האם המשימה זקוקה לטיפול מיידי?
+    2. חשיבות - מה ההשפעה של המשימה?
+    3. תלויות - האם משימות אחרות תלויות בהשלמתה?
+    4. מאמץ - כמה זמן ייקח להשלים את המשימה?
+    
+    החזר תשובה בפורמט JSON בלבד:
+    {
+      "priorities": [
+        {
+          "taskIndex": 0,
+          "priority": "high/medium/low/urgent",
+          "reasoning": "הסבר קצר לקביעת העדיפות"
+        }
+      ],
+      "language": "he"
+    }`,
+
+    en: `You are a professional assistant specialized in analyzing and determining priorities for tasks.
+    Receive a list of task descriptions and analyze the appropriate priority level for each.
+    Use the following priority levels: low, medium, high, urgent.
+    
+    Factors to consider:
+    1. Urgency - Does the task need immediate attention?
+    2. Importance - What is the impact of the task?
+    3. Dependencies - Do other tasks depend on its completion?
+    4. Effort - How long will it take to complete the task?
+    
+    Return an answer in JSON format only:
+    {
+      "priorities": [
+        {
+          "taskIndex": 0,
+          "priority": "high/medium/low/urgent",
+          "reasoning": "Brief explanation for the priority determination"
+        }
+      ],
+      "language": "en"
+    }`
   },
+
+  // Follow-up email generation prompt
   FOLLOWUP_EMAIL: {
-    he: 'אתה עוזר מומחה שכותב הודעות מעקב מקצועיות ומנומסות למשימות שממתינות להשלמה.',
-    en: 'You are an expert assistant that writes professional and polite follow-up messages for tasks that are pending completion.'
+    he: `אתה עוזר מקצועי המתמחה בכתיבת אימיילים לצורך מעקב אחר משימות.
+    חבר אימייל מעקב מקצועי, מנומס וברור בעברית.
+    
+    הקפד על:
+    1. כותרת קצרה ומדויקת
+    2. פתיחה מנומסת ומקצועית
+    3. תזכורת ברורה לגבי המשימה
+    4. אזכור התאריך/דדליין אם קיים
+    5. בקשה מנומסת לעדכון או משוב
+    6. סגירה מנומסת
+    
+    החזר תשובה בפורמט JSON בלבד:
+    {
+      "subject": "כותרת האימייל",
+      "emailContent": "תוכן האימייל המלא",
+      "sentiment": "neutral/urgent/friendly/formal",
+      "language": "he"
+    }`,
+
+    en: `You are a professional assistant specialized in writing follow-up emails for tasks.
+    Compose a professional, polite, and clear follow-up email.
+    
+    Focus on:
+    1. Short and accurate subject line
+    2. Polite and professional opening
+    3. Clear reminder about the task
+    4. Mention of the date/deadline if applicable
+    5. Polite request for update or feedback
+    6. Polite closing
+    
+    Return an answer in JSON format only:
+    {
+      "subject": "Email subject line",
+      "emailContent": "Full email content",
+      "sentiment": "neutral/urgent/friendly/formal",
+      "language": "en"
+    }`
+  },
+
+  // Hebrew date parsing prompt
+  DATE_PARSING: {
+    he: `אתה עוזר מקצועי המתמחה בפענוח תאריכים המופיעים בטקסט עברי ותרגומם לפורמט תאריך סטנדרטי.
+    
+    הבן ביטויי תאריך בעברית כגון:
+    1. "מחר", "אתמול", "היום", "בעוד שבוע"
+    2. "יום ראשון הקרוב", "שלישי הבא", "בעוד יומיים"
+    3. "ה-15 לחודש", "15 למאי", "ט"ו באייר"
+    4. "סוף החודש", "תחילת השבוע הבא", "אמצע החודש"
+    5. "חג פסח", "ערב ראש השנה", "ל"ג בעומר"
+    
+    התייחס גם לתאריך הנוכחי בעת הניתוח.
+    
+    החזר תשובה בפורמט JSON בלבד:
+    {
+      "gregorianDate": "YYYY-MM-DD",
+      "hebrewDate": "ייצוג התאריך העברי",
+      "dayOfWeek": "יום בשבוע",
+      "isRecognizedHoliday": true/false,
+      "holidayName": "שם החג (אם רלוונטי)"
+    }`,
+
+    en: `You are a professional assistant specialized in decoding dates appearing in text and translating them to standard date format.
+    
+    Understand date expressions such as:
+    1. "tomorrow", "yesterday", "today", "in a week"
+    2. "next Sunday", "this Tuesday", "in two days"
+    3. "the 15th of the month", "May 15th", "mid-April" 
+    4. "end of the month", "beginning of next week", "mid-month"
+    5. "Christmas", "Thanksgiving", "Labor Day"
+    
+    Also consider the current date when analyzing.
+    
+    Return an answer in JSON format only:
+    {
+      "gregorianDate": "YYYY-MM-DD",
+      "hebrewDate": "Hebrew date representation",
+      "dayOfWeek": "Day of week",
+      "isRecognizedHoliday": true/false,
+      "holidayName": "Holiday name (if relevant)"
+    }`
   }
 };
 
 /**
- * Shared utility functions for OpenAI service
+ * Utility functions for OpenAI
  */
 export const openaiUtils = {
   /**
-   * Extracts JSON from OpenAI response text
+   * Create a task extraction prompt with Hebrew support
    */
-  extractJsonFromResponse(responseContent: string): any {
-    const jsonMatch = responseContent.match(/\{[\s\S]*\}/);
-    if (!jsonMatch) {
-      throw new Error('No valid JSON found in response');
+  createTaskExtractionPrompt: (content: string, subject: string, language: 'he' | 'en'): string => {
+    const prompt = language === 'he' 
+      ? `תוכן האימייל הבא: 
+        כותרת: ${subject}
+        
+        ${content}
+        
+        זהה משימות מהטקסט הזה ותן תשובה בפורמט JSON בלבד.`
+      : `Analyze the following email content:
+        Subject: ${subject}
+        
+        ${content}
+        
+        Identify tasks from this text and give an answer in JSON format only.`;
+    
+    return prompt;
+  },
+
+  /**
+   * Create a priority analysis prompt
+   */
+  createPriorityAnalysisPrompt: (tasks: string[], language: 'he' | 'en'): string => {
+    const tasksText = tasks.map((task, index) => `${index + 1}. ${task}`).join('\n');
+    
+    const prompt = language === 'he'
+      ? `נתח את רמת העדיפות של המשימות הבאות:
+        
+        ${tasksText}
+        
+        קבע רמת עדיפות לכל משימה והסבר את החלטתך. תן תשובה בפורמט JSON בלבד.`
+      : `Analyze the priority level of the following tasks:
+        
+        ${tasksText}
+        
+        Determine a priority level for each task and explain your decision. Give your answer in JSON format only.`;
+    
+    return prompt;
+  },
+
+  /**
+   * Create a follow-up email prompt
+   */
+  createFollowupEmailPrompt: (
+    taskName: string, 
+    recipient: string, 
+    daysOverdue: number,
+    language: 'he' | 'en'
+  ): string => {
+    const overdueText = daysOverdue > 0
+      ? language === 'he'
+        ? `המשימה באיחור של ${daysOverdue} ימים.`
+        : `The task is ${daysOverdue} days overdue.`
+      : '';
+    
+    const prompt = language === 'he'
+      ? `כתוב אימייל מעקב קצר ומקצועי עבור המשימה: "${taskName}".
+        האימייל מיועד ל: ${recipient}.
+        ${overdueText}
+        
+        יש לכלול כותרת ותוכן אימייל. תן תשובה בפורמט JSON בלבד.`
+      : `Write a short, professional follow-up email for the task: "${taskName}".
+        The email is addressed to: ${recipient}.
+        ${overdueText}
+        
+        Include a subject line and email content. Give your answer in JSON format only.`;
+    
+    return prompt;
+  },
+
+  /**
+   * Create a date parsing prompt
+   */
+  createDateParsingPrompt: (dateText: string, language: 'he' | 'en'): string => {
+    const currentDate = new Date().toISOString().split('T')[0]; // YYYY-MM-DD
+    
+    const prompt = language === 'he'
+      ? `התאריך הנוכחי: ${currentDate}
+        
+        פענח את התאריך הבא מטקסט בעברית: "${dateText}"
+        
+        המר לפורמט תאריך גרגוריאני סטנדרטי וספק מידע על התאריך העברי המקביל. תן תשובה בפורמט JSON בלבד.`
+      : `Current date: ${currentDate}
+        
+        Decode the following date from text: "${dateText}"
+        
+        Convert to standard Gregorian date format and provide information about the corresponding Hebrew date if relevant. Give your answer in JSON format only.`;
+    
+    return prompt;
+  },
+
+  /**
+   * Extract JSON from OpenAI response
+   */
+  extractJsonFromResponse: (text: string): any => {
+    // Find content between first { and last }
+    const jsonMatch = text.match(/\{[\s\S]*\}/);
+    if (jsonMatch) {
+      try {
+        return JSON.parse(jsonMatch[0]);
+      } catch (error) {
+        console.error('Error parsing JSON from response:', error);
+      }
     }
     
-    const jsonStr = jsonMatch[0];
-    return JSON.parse(jsonStr);
-  },
-  
-  /**
-   * Creates a task extraction prompt based on language
-   */
-  createTaskExtractionPrompt(emailContent: string, emailSubject: string, language: 'he' | 'en'): string {
-    return language === 'he'
-      ? `נושא האימייל: ${emailSubject}\n\nתוכן האימייל:\n${emailContent}\n\nתחלץ משימה מהאימייל הזה בפורמט JSON הבא:\n{\n  "title": "כותרת המשימה",\n  "description": "תיאור המשימה",\n  "dueDate": "YYYY-MM-DD או null אם לא צוין",\n  "priority": "נמוכה/בינונית/גבוהה/דחופה",\n  "tags": ["תגית1", "תגית2"],\n  "containsTask": true/false\n}`
-      : `Email Subject: ${emailSubject}\n\nEmail Content:\n${emailContent}\n\nExtract a task from this email in the following JSON format:\n{\n  "title": "Task title",\n  "description": "Task description",\n  "dueDate": "YYYY-MM-DD or null if not specified",\n  "priority": "low/medium/high/urgent",\n  "tags": ["tag1", "tag2"],\n  "containsTask": true/false\n}`;
-  },
-  
-  /**
-   * Creates a task priority analysis prompt based on language
-   */
-  createPriorityAnalysisPrompt(
-    taskTitle: string,
-    taskDescription: string,
-    dueDate: string | null,
-    language: 'he' | 'en'
-  ): string {
-    return language === 'he'
-      ? `כותרת המשימה: ${taskTitle}\n\nתיאור המשימה: ${taskDescription}\n\nתאריך יעד: ${dueDate || 'לא צוין'}\n\nנתח את המשימה הזו וקבע את רמת העדיפות שלה (נמוכה, בינונית, גבוהה, דחופה) וכמה תזכורות יש לשלוח לפני התאריך. החזר את התשובה בפורמט JSON הבא:\n{\n  "priority": "נמוכה/בינונית/גבוהה/דחופה",\n  "reminderFrequency": "daily/weekly/custom",\n  "customReminderDays": 3,\n  "reasoning": "הסבר קצר לקביעה שלך"\n}`
-      : `Task Title: ${taskTitle}\n\nTask Description: ${taskDescription}\n\nDue Date: ${dueDate || 'Not specified'}\n\nAnalyze this task and determine its priority level (low, medium, high, urgent) and how many reminders should be sent before the deadline. Return the answer in the following JSON format:\n{\n  "priority": "low/medium/high/urgent",\n  "reminderFrequency": "daily/weekly/custom",\n  "customReminderDays": 3,\n  "reasoning": "Brief explanation for your determination"\n}`;
-  },
-  
-  /**
-   * Creates a follow-up email prompt based on language and follow-up count
-   */
-  createFollowupEmailPrompt(
-    taskTitle: string,
-    taskDescription: string,
-    dueDate: string | null,
-    recipientName: string,
-    followupCount: number,
-    language: 'he' | 'en'
-  ): string {
-    // Determine tone based on follow-up count
-    let tone = 'polite';
-    if (followupCount > 2) {
-      tone = 'urgent';
-    } else if (followupCount > 1) {
-      tone = 'assertive';
-    }
-    
-    return language === 'he'
-      ? `כותרת המשימה: ${taskTitle}\n\nתיאור המשימה: ${taskDescription}\n\nתאריך יעד: ${dueDate || 'לא צוין'}\n\nשם הנמען: ${recipientName}\n\nזוהי הודעת המעקב מספר ${followupCount}.\n\nכתוב הודעת מעקב בטון ${tone === 'polite' ? 'מנומס' : tone === 'assertive' ? 'תקיף' : 'דחוף'} עבור המשימה הזו. ההודעה צריכה לכלול:\n1. שורת נושא\n2. פנייה אישית\n3. תזכורת לגבי המשימה\n4. בקשה לעדכון סטטוס\n5. תאריך היעד (אם רלוונטי)\n6. חתימה\n\nהחזר את התשובה בפורמט JSON:\n{\n  "subject": "שורת הנושא",\n  "body": "תוכן ההודעה המלא"\n}`
-      : `Task Title: ${taskTitle}\n\nTask Description: ${taskDescription}\n\nDue Date: ${dueDate || 'Not specified'}\n\nRecipient Name: ${recipientName}\n\nThis is follow-up number ${followupCount}.\n\nWrite a follow-up message in a ${tone} tone for this task. The message should include:\n1. Subject line\n2. Personal greeting\n3. Reminder about the task\n4. Request for status update\n5. Due date (if relevant)\n6. Signature\n\nReturn the answer in JSON format:\n{\n  "subject": "The subject line",\n  "body": "The full message content"\n}`;
+    // If no JSON or parsing failed, return null
+    return null;
   }
 }; 

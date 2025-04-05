@@ -1,241 +1,338 @@
 import { Configuration, OpenAIApi } from 'openai';
+import { config } from '../config/env';
 import { 
   TaskExtractionResult, 
   PriorityAnalysisResult, 
   FollowupEmailResult,
+  HebrewDateInfo,
   SYSTEM_PROMPTS,
-  openaiUtils 
+  openaiUtils
 } from '../../../shared/services/openai.types';
-import config from '../../../shared/config/env';
+import * as dateService from './date.service';
 
-// OpenAI Configuration
+// Configuration for OpenAI API
+const getApiKey = (): string => {
+  const apiKey = config.openai.apiKey;
+  
+  if (!apiKey) {
+    console.error('OpenAI API key is not configured');
+    throw new Error('OpenAI API key is missing');
+  }
+  
+  return apiKey;
+};
+
+// Initialize OpenAI configuration
 const configuration = new Configuration({
-  apiKey: config.openai.apiKey
+  apiKey: getApiKey(),
 });
 
-// Check if API key is available
-if (!config.openai.apiKey) {
-  console.error('OpenAI API key is not provided. Please set OPENAI_API_KEY environment variable.');
-  // We don't exit the process here to allow the application to start,
-  // but the OpenAI functions will throw errors when called
-}
-
-// Create OpenAI API instance
 const openai = new OpenAIApi(configuration);
 
 /**
- * Function to extract tasks from email content (supports Hebrew)
+ * Extract tasks from an email with Hebrew support
  */
-export async function extractTaskFromEmail(
-  emailContent: string,
-  emailSubject: string,
+export const extractTaskFromEmail = async (
+  content: string, 
+  subject: string = '', 
   language: 'he' | 'en' = 'he'
-): Promise<TaskExtractionResult> {
+): Promise<TaskExtractionResult> => {
   try {
-    if (!config.openai.apiKey) {
-      throw new Error('OpenAI API key is not configured');
-    }
-
-    const model = config.openai.model;
+    // Default result in case of error
+    const defaultResult: TaskExtractionResult = {
+      tasks: [],
+      confidence: 0,
+      language: language
+    };
     
-    // Get system prompt from shared constants
+    // Create the prompt
     const systemPrompt = SYSTEM_PROMPTS.TASK_EXTRACTION[language];
-
-    // Create the completion prompt using shared utility
-    const prompt = openaiUtils.createTaskExtractionPrompt(emailContent, emailSubject, language);
-
-    // Call the OpenAI API with support for Hebrew content
-    const completion = await openai.createChatCompletion({
-      model,
-      messages: [
-        {
-          role: 'system',
-          content: systemPrompt,
-        },
-        {
-          role: 'user',
-          content: prompt,
-        }
-      ],
-      temperature: 0.3, // Lower temperature for more deterministic outputs
-      max_tokens: 800,
-    });
-
-    // Parse the response
-    const responseContent = completion.data.choices[0]?.message?.content || '';
+    const userPrompt = openaiUtils.createTaskExtractionPrompt(content, subject, language);
     
-    try {
-      // Extract JSON from the response using shared utility
-      const taskData = openaiUtils.extractJsonFromResponse(responseContent);
-      return {
-        success: true,
-        task: taskData,
-      };
-    } catch (parseError) {
-      console.error('Error parsing OpenAI response:', parseError);
-      return {
-        success: false,
-        error: 'Failed to parse task data',
-        rawResponse: responseContent,
-      };
+    // Call OpenAI
+    const response = await openai.createChatCompletion({
+      model: 'gpt-4',
+      messages: [
+        { role: 'system', content: systemPrompt },
+        { role: 'user', content: userPrompt }
+      ],
+      temperature: 0.2,
+      max_tokens: 1000
+    });
+    
+    // Extract the content from the response
+    const responseContent = response.data.choices[0]?.message?.content;
+    
+    if (!responseContent) {
+      console.error('Empty response from OpenAI');
+      return defaultResult;
     }
-  } catch (error) {
-    console.error('OpenAI API error:', error);
+    
+    // Extract JSON from the response
+    const extractedData = openaiUtils.extractJsonFromResponse(responseContent);
+    
+    if (!extractedData) {
+      console.error('Failed to extract JSON from response');
+      return defaultResult;
+    }
+    
+    // Process and enhance the extracted tasks
+    // We'll enrich the task data with better date parsing
+    const enhancedTasks = await Promise.all((extractedData.tasks || []).map(async (task: any) => {
+      // If we have a deadline text that needs parsing
+      if (task.deadline && dateService.containsDate(task.deadline)) {
+        try {
+          // Try to parse with our specialized date service
+          const parsedDate = await dateService.parseDate(task.deadline, language);
+          task.deadline = parsedDate.gregorianDate;
+          task.parsedDateInfo = parsedDate;
+        } catch (error) {
+          console.error('Error parsing date:', error);
+          // Keep the original deadline if parsing fails
+        }
+      }
+      
+      return task;
+    }));
+    
+    // Return the processed result
     return {
-      success: false,
-      error: 'Failed to extract task from email',
+      tasks: enhancedTasks,
+      confidence: extractedData.confidence || 0,
+      language: extractedData.language || language,
+      suggestedFollowup: extractedData.suggestedFollowup,
+      originalText: content
+    };
+  } catch (error) {
+    console.error('Error extracting tasks from email:', error);
+    
+    // Return empty result on error
+    return {
+      tasks: [],
+      confidence: 0,
+      language: language,
+      originalText: content
     };
   }
-}
+};
 
 /**
- * Function to analyze task priority for reminders (supports Hebrew)
+ * Analyze task priority with Hebrew support
  */
-export async function analyzeTaskPriority(
-  taskTitle: string,
-  taskDescription: string,
-  dueDate: string | null,
+export const analyzeTaskPriority = async (
+  taskDescriptions: string[], 
   language: 'he' | 'en' = 'he'
-): Promise<PriorityAnalysisResult> {
+): Promise<PriorityAnalysisResult> => {
   try {
-    if (!config.openai.apiKey) {
-      throw new Error('OpenAI API key is not configured');
-    }
-
-    const model = config.openai.model;
+    // Default result in case of error
+    const defaultResult: PriorityAnalysisResult = {
+      priorities: [],
+      language: language
+    };
     
-    // Get system prompt from shared constants
+    // If no tasks provided, return empty result
+    if (!taskDescriptions || taskDescriptions.length === 0) {
+      return defaultResult;
+    }
+    
+    // Create the prompt
     const systemPrompt = SYSTEM_PROMPTS.PRIORITY_ANALYSIS[language];
-
-    // Create the completion prompt using shared utility
-    const prompt = openaiUtils.createPriorityAnalysisPrompt(
-      taskTitle, 
-      taskDescription, 
-      dueDate, 
-      language
-    );
-
-    // Call the OpenAI API with support for Hebrew content
-    const completion = await openai.createChatCompletion({
-      model,
+    const userPrompt = openaiUtils.createPriorityAnalysisPrompt(taskDescriptions, language);
+    
+    // Call OpenAI
+    const response = await openai.createChatCompletion({
+      model: 'gpt-4',
       messages: [
-        {
-          role: 'system',
-          content: systemPrompt,
-        },
-        {
-          role: 'user',
-          content: prompt,
-        }
+        { role: 'system', content: systemPrompt },
+        { role: 'user', content: userPrompt }
       ],
       temperature: 0.3,
-      max_tokens: 500,
+      max_tokens: 1000
     });
-
-    // Parse the response
-    const responseContent = completion.data.choices[0]?.message?.content || '';
     
-    try {
-      // Extract JSON from the response using shared utility
-      const analysisData = openaiUtils.extractJsonFromResponse(responseContent);
-      return {
-        success: true,
-        analysis: analysisData,
-      };
-    } catch (parseError) {
-      console.error('Error parsing OpenAI response:', parseError);
-      return {
-        success: false,
-        error: 'Failed to parse priority analysis',
-        rawResponse: responseContent,
-      };
+    // Extract the content from the response
+    const responseContent = response.data.choices[0]?.message?.content;
+    
+    if (!responseContent) {
+      console.error('Empty response from OpenAI');
+      return defaultResult;
     }
-  } catch (error) {
-    console.error('OpenAI API error:', error);
+    
+    // Extract JSON from the response
+    const extractedData = openaiUtils.extractJsonFromResponse(responseContent);
+    
+    if (!extractedData || !extractedData.priorities) {
+      console.error('Failed to extract priorities from response');
+      return defaultResult;
+    }
+    
+    // Make sure each priority has the required fields
+    const validPriorities = extractedData.priorities.filter((item: any) => 
+      typeof item.taskIndex === 'number' && 
+      typeof item.priority === 'string' &&
+      typeof item.reasoning === 'string'
+    );
+    
+    // Return the processed result
     return {
-      success: false,
-      error: 'Failed to analyze task priority',
+      priorities: validPriorities,
+      language: extractedData.language || language
+    };
+  } catch (error) {
+    console.error('Error analyzing task priorities:', error);
+    
+    // Return empty result on error
+    return {
+      priorities: [],
+      language: language
     };
   }
-}
+};
 
 /**
- * Function to generate a follow-up email (supports Hebrew)
+ * Generate a follow-up email based on task information
  */
-export async function generateFollowupEmail(
-  taskTitle: string,
-  taskDescription: string,
-  dueDate: string | null,
-  recipientName: string,
-  followupCount: number,
+export const generateFollowupEmail = async (
+  taskName: string,
+  recipient: string,
+  daysOverdue: number,
   language: 'he' | 'en' = 'he'
-): Promise<FollowupEmailResult> {
+): Promise<FollowupEmailResult> => {
   try {
-    if (!config.openai.apiKey) {
-      throw new Error('OpenAI API key is not configured');
-    }
-
-    const model = config.openai.model;
+    // Default result in case of error
+    const defaultResult: FollowupEmailResult = {
+      subject: `מעקב: ${taskName}`,
+      emailContent: `שלום ${recipient},\n\nזוהי הודעת מעקב לגבי המשימה "${taskName}".\n\nבברכה,`,
+      sentiment: 'neutral',
+      language: language
+    };
     
-    // Get system prompt from shared constants
+    // Create the prompt
     const systemPrompt = SYSTEM_PROMPTS.FOLLOWUP_EMAIL[language];
-
-    // Create the completion prompt using shared utility
-    const prompt = openaiUtils.createFollowupEmailPrompt(
-      taskTitle,
-      taskDescription,
-      dueDate,
-      recipientName,
-      followupCount,
-      language
-    );
-
-    // Call the OpenAI API with support for Hebrew content
-    const completion = await openai.createChatCompletion({
-      model,
-      messages: [
-        {
-          role: 'system',
-          content: systemPrompt,
-        },
-        {
-          role: 'user',
-          content: prompt,
-        }
-      ],
-      temperature: 0.5, // Allow some creativity in email generation
-      max_tokens: 1000,
-    });
-
-    // Parse the response
-    const responseContent = completion.data.choices[0]?.message?.content || '';
+    const userPrompt = openaiUtils.createFollowupEmailPrompt(taskName, recipient, daysOverdue, language);
     
-    try {
-      // Extract JSON from the response using shared utility
-      const emailData = openaiUtils.extractJsonFromResponse(responseContent);
-      return {
-        success: true,
-        email: emailData,
-      };
-    } catch (parseError) {
-      console.error('Error parsing OpenAI response:', parseError);
-      return {
-        success: false,
-        error: 'Failed to generate follow-up email',
-        rawResponse: responseContent,
-      };
+    // Call OpenAI
+    const response = await openai.createChatCompletion({
+      model: 'gpt-4',
+      messages: [
+        { role: 'system', content: systemPrompt },
+        { role: 'user', content: userPrompt }
+      ],
+      temperature: 0.5,
+      max_tokens: 1000
+    });
+    
+    // Extract the content from the response
+    const responseContent = response.data.choices[0]?.message?.content;
+    
+    if (!responseContent) {
+      console.error('Empty response from OpenAI');
+      return defaultResult;
     }
-  } catch (error) {
-    console.error('OpenAI API error:', error);
+    
+    // Extract JSON from the response
+    const extractedData = openaiUtils.extractJsonFromResponse(responseContent);
+    
+    if (!extractedData) {
+      console.error('Failed to extract email from response');
+      return defaultResult;
+    }
+    
+    // Return the processed result
     return {
-      success: false,
-      error: 'Failed to generate follow-up email',
+      subject: extractedData.subject || defaultResult.subject,
+      emailContent: extractedData.emailContent || defaultResult.emailContent,
+      sentiment: extractedData.sentiment || 'neutral',
+      language: extractedData.language || language
+    };
+  } catch (error) {
+    console.error('Error generating follow-up email:', error);
+    
+    // Return default result on error
+    return defaultResult;
+  }
+};
+
+/**
+ * Parse date text with Hebrew support using OpenAI
+ */
+export const parseDateText = async (
+  dateText: string, 
+  language: 'he' | 'en' = 'he'
+): Promise<HebrewDateInfo> => {
+  try {
+    // Default result in case of error
+    const currentDate = new Date();
+    const defaultResult: HebrewDateInfo = {
+      gregorianDate: currentDate.toISOString().split('T')[0],
+      hebrewDate: 'לא זוהה',
+      dayOfWeek: language === 'he' ? 'לא זוהה' : 'Unknown',
+      isRecognizedHoliday: false
+    };
+    
+    // Create the prompt
+    const systemPrompt = SYSTEM_PROMPTS.DATE_PARSING[language];
+    const userPrompt = openaiUtils.createDateParsingPrompt(dateText, language);
+    
+    // Call OpenAI
+    const response = await openai.createChatCompletion({
+      model: 'gpt-4',
+      messages: [
+        { role: 'system', content: systemPrompt },
+        { role: 'user', content: userPrompt }
+      ],
+      temperature: 0.2,
+      max_tokens: 500
+    });
+    
+    // Extract the content from the response
+    const responseContent = response.data.choices[0]?.message?.content;
+    
+    if (!responseContent) {
+      console.error('Empty response from OpenAI');
+      return defaultResult;
+    }
+    
+    // Extract JSON from the response
+    const extractedData = openaiUtils.extractJsonFromResponse(responseContent);
+    
+    if (!extractedData || !extractedData.gregorianDate) {
+      console.error('Failed to extract date from response');
+      return defaultResult;
+    }
+    
+    // Validate the gregorian date
+    const date = new Date(extractedData.gregorianDate);
+    if (isNaN(date.getTime())) {
+      console.error('Invalid date returned:', extractedData.gregorianDate);
+      return defaultResult;
+    }
+    
+    // Return the processed result
+    return {
+      gregorianDate: extractedData.gregorianDate,
+      hebrewDate: extractedData.hebrewDate || defaultResult.hebrewDate,
+      dayOfWeek: extractedData.dayOfWeek || defaultResult.dayOfWeek,
+      isRecognizedHoliday: extractedData.isRecognizedHoliday || false,
+      holidayName: extractedData.holidayName
+    };
+  } catch (error) {
+    console.error('Error parsing date text:', error);
+    
+    // Return default result on error
+    const currentDate = new Date();
+    return {
+      gregorianDate: currentDate.toISOString().split('T')[0],
+      hebrewDate: 'לא זוהה',
+      dayOfWeek: language === 'he' ? 'לא זוהה' : 'Unknown',
+      isRecognizedHoliday: false
     };
   }
-}
+};
 
 export default {
   extractTaskFromEmail,
   analyzeTaskPriority,
-  generateFollowupEmail
+  generateFollowupEmail,
+  parseDateText
 }; 

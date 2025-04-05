@@ -1,7 +1,7 @@
 import { Request, Response, NextFunction } from 'express';
+import * as emailService from '../services/email.service';
 import { firestore } from '../firebase/admin';
-import * as openaiService from '../services/openai.service';
-import { createBadRequestError, createNotFoundError } from '../middleware/errorHandler';
+import { createBadRequestError, createNotFoundError, createAuthorizationError } from '../middleware/errorHandler';
 
 // Collection references
 const emailsCollection = firestore.collection('emails');
@@ -9,51 +9,27 @@ const emailAccountsCollection = firestore.collection('emailAccounts');
 const emailTemplatesCollection = firestore.collection('emailTemplates');
 
 /**
- * Process an email - extract tasks and analyze content
+ * Process an email and extract tasks
  */
 export const processEmail = async (req: Request, res: Response, next: NextFunction) => {
   try {
-    const { subject, content, sender, recipient, date, threadId, language = 'he' } = req.body;
+    const { emailId } = req.body;
+    const userId = req.user?.uid;
     
-    if (!content) {
-      return next(createBadRequestError('Email content is required'));
+    if (!userId) {
+      return next(createAuthorizationError('User not authenticated'));
     }
     
-    // Extract tasks from email content
-    const extractionResult = await openaiService.extractTaskFromEmail(content, subject, language);
-    
-    // Analyze task priorities if tasks were found
-    let priorityResults = null;
-    if (extractionResult.tasks && extractionResult.tasks.length > 0) {
-      const taskTexts = extractionResult.tasks.map(task => task.description);
-      priorityResults = await openaiService.analyzeTaskPriority(taskTexts, language);
+    if (!emailId) {
+      return next(createBadRequestError('Email ID is required'));
     }
     
-    // Create email record in database
-    const emailData = {
-      subject: subject || '(No Subject)',
-      content,
-      sender: sender || '',
-      recipient: recipient || '',
-      date: date ? new Date(date) : new Date(),
-      threadId: threadId || null,
-      userId: req.user?.uid,
-      processed: true,
-      extractedTasks: extractionResult.tasks || [],
-      taskAnalysis: priorityResults || null,
-      createdAt: new Date(),
-      updatedAt: new Date()
-    };
-    
-    const emailRef = await emailsCollection.add(emailData);
+    // Process the email
+    const result = await emailService.extractTasksFromEmail(emailId);
     
     res.status(200).json({
       success: true,
-      data: {
-        emailId: emailRef.id,
-        extraction: extractionResult,
-        priorities: priorityResults
-      }
+      data: result
     });
   } catch (error) {
     next(error);
@@ -61,59 +37,43 @@ export const processEmail = async (req: Request, res: Response, next: NextFuncti
 };
 
 /**
- * Analyze an existing email
+ * Analyze an email without saving tasks
  */
 export const analyzeEmail = async (req: Request, res: Response, next: NextFunction) => {
   try {
-    const { emailId, language = 'he' } = req.body;
+    const { content, subject, language } = req.body;
+    const userId = req.user?.uid;
     
-    if (!emailId) {
-      return next(createBadRequestError('Email ID is required'));
+    if (!userId) {
+      return next(createAuthorizationError('User not authenticated'));
     }
     
-    // Get the email from the database
-    const emailDoc = await emailsCollection.doc(emailId).get();
-    
-    if (!emailDoc.exists) {
-      return next(createNotFoundError('Email not found'));
+    if (!content) {
+      return next(createBadRequestError('Email content is required'));
     }
     
-    const emailData = emailDoc.data();
-    
-    // Check if user is authorized to access this email
-    if (emailData?.userId !== req.user?.uid && !req.user?.role?.includes('admin')) {
-      return next(createNotFoundError('Email not found'));
-    }
-    
-    // Extract tasks from email content
-    const extractionResult = await openaiService.extractTaskFromEmail(
-      emailData.content,
-      emailData.subject,
-      language
-    );
-    
-    // Analyze task priorities if tasks were found
-    let priorityResults = null;
-    if (extractionResult.tasks && extractionResult.tasks.length > 0) {
-      const taskTexts = extractionResult.tasks.map(task => task.description);
-      priorityResults = await openaiService.analyzeTaskPriority(taskTexts, language);
-    }
-    
-    // Update email record in database
-    await emailsCollection.doc(emailId).update({
-      processed: true,
-      extractedTasks: extractionResult.tasks || [],
-      taskAnalysis: priorityResults || null,
+    // Create a temporary email document
+    const emailData = {
+      subject: subject || '',
+      content,
+      userId,
+      language: language || 'he',
+      temporary: true,
+      createdAt: new Date(),
       updatedAt: new Date()
-    });
+    };
+    
+    const emailRef = await emailsCollection.add(emailData);
+    
+    // Process the email
+    const result = await emailService.extractTasksFromEmail(emailRef.id);
+    
+    // Delete the temporary document
+    await emailRef.delete();
     
     res.status(200).json({
       success: true,
-      data: {
-        emailId,
-        extraction: extractionResult,
-        priorities: priorityResults
-      }
+      data: result
     });
   } catch (error) {
     next(error);
@@ -125,58 +85,36 @@ export const analyzeEmail = async (req: Request, res: Response, next: NextFuncti
  */
 export const extractTasksFromEmail = async (req: Request, res: Response, next: NextFunction) => {
   try {
-    const { emailId, content, subject, language = 'he' } = req.body;
+    const { emailId } = req.body;
+    const userId = req.user?.uid;
     
-    // If emailId is provided, get the email from the database
-    if (emailId) {
-      const emailDoc = await emailsCollection.doc(emailId).get();
-      
-      if (!emailDoc.exists) {
-        return next(createNotFoundError('Email not found'));
-      }
-      
-      const emailData = emailDoc.data();
-      
-      // Check if user is authorized to access this email
-      if (emailData?.userId !== req.user?.uid && !req.user?.role?.includes('admin')) {
-        return next(createNotFoundError('Email not found'));
-      }
-      
-      // Extract tasks from email content
-      const extractionResult = await openaiService.extractTaskFromEmail(
-        emailData.content,
-        emailData.subject,
-        language
-      );
-      
-      // Update email record in database
-      await emailsCollection.doc(emailId).update({
-        processed: true,
-        extractedTasks: extractionResult.tasks || [],
-        updatedAt: new Date()
-      });
-      
-      return res.status(200).json({
-        success: true,
-        data: extractionResult
-      });
+    if (!userId) {
+      return next(createAuthorizationError('User not authenticated'));
     }
     
-    // If content is provided directly
-    if (!content) {
-      return next(createBadRequestError('Either emailId or content is required'));
+    if (!emailId) {
+      return next(createBadRequestError('Email ID is required'));
     }
     
-    // Extract tasks from provided content
-    const extractionResult = await openaiService.extractTaskFromEmail(
-      content,
-      subject || '',
-      language
-    );
+    // Get the email from Firestore
+    const emailDoc = await emailsCollection.doc(emailId).get();
+    if (!emailDoc.exists) {
+      return next(createNotFoundError('Email not found'));
+    }
+    
+    const emailData = emailDoc.data();
+    
+    // Check if user has permission to access this email
+    if (emailData?.userId !== userId) {
+      return next(createAuthorizationError('You do not have permission to access this email'));
+    }
+    
+    // Process the email
+    const result = await emailService.extractTasksFromEmail(emailId);
     
     res.status(200).json({
       success: true,
-      data: extractionResult
+      data: result
     });
   } catch (error) {
     next(error);
@@ -189,33 +127,65 @@ export const extractTasksFromEmail = async (req: Request, res: Response, next: N
 export const getAllEmails = async (req: Request, res: Response, next: NextFunction) => {
   try {
     const userId = req.user?.uid;
-    const { limit, offset, sort } = req.query;
+    const { page = 1, limit = 20, filter, sort } = req.query;
     
-    // Create query
-    let query = emailsCollection.where('userId', '==', userId);
+    if (!userId) {
+      return next(createAuthorizationError('User not authenticated'));
+    }
+    
+    // Start with a base query
+    let query: any = emailsCollection
+      .where('userId', '==', userId)
+      .where('temporary', '==', false);
+    
+    // Apply filters if provided
+    if (filter) {
+      const filterObj = typeof filter === 'string' ? JSON.parse(filter) : filter;
+      
+      if (filterObj.read !== undefined) {
+        query = query.where('read', '==', filterObj.read === true);
+      }
+      
+      if (filterObj.processed !== undefined) {
+        query = query.where('processed', '==', filterObj.processed === true);
+      }
+      
+      if (filterObj.hasTasks !== undefined) {
+        query = query.where('hasTasks', '==', filterObj.hasTasks === true);
+      }
+      
+      if (filterObj.search) {
+        // This is a simplified search, in a real app consider using algolia or similar
+        // Note that Firestore doesn't support direct text search or contains operations
+        query = query.where('content', '>=', filterObj.search)
+                     .where('content', '<=', filterObj.search + '\uf8ff');
+      }
+    }
     
     // Apply sorting
-    if (sort === 'asc') {
-      query = query.orderBy('date', 'asc');
+    if (sort) {
+      const sortObj = typeof sort === 'string' ? JSON.parse(sort) : sort;
+      const field = sortObj.field || 'date';
+      const direction = sortObj.direction === 'asc' ? 'asc' : 'desc';
+      
+      query = query.orderBy(field, direction);
     } else {
       // Default sort by date descending
       query = query.orderBy('date', 'desc');
     }
     
-    // Apply limit
-    if (limit) {
-      query = query.limit(parseInt(limit as string));
-    }
+    // Apply pagination
+    const pageNum = parseInt(page as string, 10);
+    const limitNum = parseInt(limit as string, 10);
+    const offset = (pageNum - 1) * limitNum;
     
-    // Apply offset
-    if (offset) {
-      query = query.offset(parseInt(offset as string));
-    }
+    // Get the total count first (for pagination info)
+    const countQuery = await query.count().get();
+    const totalCount = countQuery.data().count;
     
-    // Execute query
-    const snapshot = await query.get();
+    // Then get the paginated results
+    const snapshot = await query.limit(limitNum).offset(offset).get();
     
-    // Format results
     const emails = snapshot.docs.map(doc => ({
       id: doc.id,
       ...doc.data()
@@ -224,6 +194,12 @@ export const getAllEmails = async (req: Request, res: Response, next: NextFuncti
     res.status(200).json({
       success: true,
       count: emails.length,
+      totalCount,
+      pagination: {
+        page: pageNum,
+        limit: limitNum,
+        totalPages: Math.ceil(totalCount / limitNum)
+      },
       data: emails
     });
   } catch (error) {
@@ -236,11 +212,15 @@ export const getAllEmails = async (req: Request, res: Response, next: NextFuncti
  */
 export const getEmailById = async (req: Request, res: Response, next: NextFunction) => {
   try {
-    const emailId = req.params.id;
+    const { id } = req.params;
     const userId = req.user?.uid;
     
+    if (!userId) {
+      return next(createAuthorizationError('User not authenticated'));
+    }
+    
     // Get the email
-    const emailDoc = await emailsCollection.doc(emailId).get();
+    const emailDoc = await emailsCollection.doc(id).get();
     
     if (!emailDoc.exists) {
       return next(createNotFoundError('Email not found'));
@@ -248,9 +228,17 @@ export const getEmailById = async (req: Request, res: Response, next: NextFuncti
     
     const emailData = emailDoc.data();
     
-    // Check if user is authorized to access this email
-    if (emailData?.userId !== userId && !req.user?.role?.includes('admin')) {
-      return next(createNotFoundError('Email not found'));
+    // Check if user has permission to access this email
+    if (emailData?.userId !== userId) {
+      return next(createAuthorizationError('You do not have permission to access this email'));
+    }
+    
+    // Mark as read if not already
+    if (!emailData?.read) {
+      await emailsCollection.doc(id).update({ 
+        read: true,
+        updatedAt: new Date()
+      });
     }
     
     res.status(200).json({
@@ -266,25 +254,28 @@ export const getEmailById = async (req: Request, res: Response, next: NextFuncti
 };
 
 /**
- * Get emails in the same thread
+ * Get all emails in a thread
  */
 export const getEmailsInThread = async (req: Request, res: Response, next: NextFunction) => {
   try {
-    const threadId = req.params.threadId;
+    const { threadId } = req.params;
     const userId = req.user?.uid;
+    
+    if (!userId) {
+      return next(createAuthorizationError('User not authenticated'));
+    }
     
     if (!threadId) {
       return next(createBadRequestError('Thread ID is required'));
     }
     
-    // Get all emails in the thread
+    // Get emails in the thread
     const snapshot = await emailsCollection
-      .where('threadId', '==', threadId)
       .where('userId', '==', userId)
+      .where('threadId', '==', threadId)
       .orderBy('date', 'asc')
       .get();
     
-    // Format results
     const emails = snapshot.docs.map(doc => ({
       id: doc.id,
       ...doc.data()
@@ -305,47 +296,56 @@ export const getEmailsInThread = async (req: Request, res: Response, next: NextF
  */
 export const sendEmail = async (req: Request, res: Response, next: NextFunction) => {
   try {
-    const { to, subject, content, cc, bcc, attachments } = req.body;
+    const { accountId, to, subject, body, cc, bcc, isHtml, attachments, replyTo } = req.body;
     const userId = req.user?.uid;
     
+    if (!userId) {
+      return next(createAuthorizationError('User not authenticated'));
+    }
+    
+    if (!accountId) {
+      return next(createBadRequestError('Account ID is required'));
+    }
+    
     if (!to) {
-      return next(createBadRequestError('Recipient (to) is required'));
+      return next(createBadRequestError('Recipient email is required'));
     }
     
-    if (!content) {
-      return next(createBadRequestError('Email content is required'));
+    if (!subject || !body) {
+      return next(createBadRequestError('Subject and body are required'));
     }
     
-    // Create email record in database
-    const emailData = {
-      subject: subject || '(No Subject)',
-      content,
-      sender: req.user?.email || '',
-      recipient: to,
-      cc: cc || [],
-      bcc: bcc || [],
-      hasAttachments: attachments && attachments.length > 0,
-      date: new Date(),
-      threadId: null, // New email, no thread yet
-      userId,
-      sent: true,
-      outgoing: true,
-      createdAt: new Date(),
-      updatedAt: new Date()
-    };
+    // Check if the account belongs to this user
+    const accountDoc = await emailAccountsCollection.doc(accountId).get();
     
-    // In a real application, we would call an email sending service here
+    if (!accountDoc.exists) {
+      return next(createNotFoundError('Email account not found'));
+    }
     
-    // Save the email to the database
-    const emailRef = await emailsCollection.add(emailData);
+    const accountData = accountDoc.data();
+    
+    if (accountData?.userId !== userId) {
+      return next(createAuthorizationError('You do not have permission to use this account'));
+    }
+    
+    // Send the email
+    const result = await emailService.sendEmail(
+      accountId,
+      to,
+      subject,
+      body,
+      {
+        cc,
+        bcc,
+        isHtml: isHtml || false,
+        attachments,
+        replyTo
+      }
+    );
     
     res.status(200).json({
       success: true,
-      message: 'Email sent successfully',
-      data: {
-        id: emailRef.id,
-        ...emailData
-      }
+      data: result
     });
   } catch (error) {
     next(error);
@@ -357,72 +357,82 @@ export const sendEmail = async (req: Request, res: Response, next: NextFunction)
  */
 export const replyToEmail = async (req: Request, res: Response, next: NextFunction) => {
   try {
-    const { emailId, content, replyAll, attachments } = req.body;
+    const { emailId, body, includeOriginal, isHtml } = req.body;
     const userId = req.user?.uid;
     
-    if (!emailId) {
-      return next(createBadRequestError('Original email ID is required'));
+    if (!userId) {
+      return next(createAuthorizationError('User not authenticated'));
     }
     
-    if (!content) {
-      return next(createBadRequestError('Reply content is required'));
+    if (!emailId || !body) {
+      return next(createBadRequestError('Email ID and reply body are required'));
     }
     
     // Get the original email
-    const originalEmailDoc = await emailsCollection.doc(emailId).get();
+    const emailDoc = await emailsCollection.doc(emailId).get();
     
-    if (!originalEmailDoc.exists) {
-      return next(createNotFoundError('Original email not found'));
+    if (!emailDoc.exists) {
+      return next(createNotFoundError('Email not found'));
     }
     
-    const originalEmail = originalEmailDoc.data();
+    const emailData = emailDoc.data();
     
-    // Check if user is authorized to access this email
-    if (originalEmail?.userId !== userId && !req.user?.role?.includes('admin')) {
-      return next(createNotFoundError('Original email not found'));
+    // Check if user has permission to access this email
+    if (emailData?.userId !== userId) {
+      return next(createAuthorizationError('You do not have permission to access this email'));
     }
     
-    // Determine recipients for the reply
-    const to = originalEmail.sender;
-    let cc = [];
+    // Get the account details
+    const accountDoc = await emailAccountsCollection.doc(emailData.accountId).get();
     
-    if (replyAll && originalEmail.cc) {
-      // Remove the current user's email from CC list
-      cc = originalEmail.cc.filter(email => email !== req.user?.email);
+    if (!accountDoc.exists) {
+      return next(createNotFoundError('Email account not found'));
     }
     
-    // Create the reply email record
-    const replyData = {
-      subject: originalEmail.subject.startsWith('Re:') 
-        ? originalEmail.subject 
-        : `Re: ${originalEmail.subject}`,
-      content,
-      sender: req.user?.email || '',
-      recipient: to,
-      cc,
-      hasAttachments: attachments && attachments.length > 0,
-      date: new Date(),
-      threadId: originalEmail.threadId || originalEmailDoc.id, // Use existing thread or original email ID
-      userId,
-      sent: true,
-      outgoing: true,
-      inReplyTo: emailId,
-      createdAt: new Date(),
-      updatedAt: new Date()
-    };
+    // Construct the reply
+    let replyBody = body;
     
-    // In a real application, we would call an email sending service here
+    if (includeOriginal && emailData.content) {
+      // Format the original message for inclusion
+      const originalContent = isHtml
+        ? `<div style="border-left: 1px solid #ccc; padding-left: 10px; margin-top: 20px;">${emailData.content}</div>`
+        : `\n\n> ${emailData.content.replace(/\n/g, '\n> ')}`;
+      
+      replyBody += originalContent;
+    }
     
-    // Save the reply to the database
-    const replyRef = await emailsCollection.add(replyData);
+    // Create the subject with Re: prefix if not already present
+    const subject = emailData.subject?.startsWith('Re:')
+      ? emailData.subject
+      : `Re: ${emailData.subject}`;
+    
+    // Get the reply-to or sender address
+    const to = emailData.replyTo || emailData.sender;
+    
+    // Send the reply
+    const result = await emailService.sendEmail(
+      emailData.accountId,
+      to,
+      subject,
+      replyBody,
+      {
+        isHtml: isHtml || false,
+        replyTo: emailData.recipient // Reply from the original recipient address
+      }
+    );
+    
+    // Update the email thread information
+    const threadId = emailData.threadId || emailId;
+    
+    await emailsCollection.doc(result.emailId).update({
+      threadId,
+      isReply: true,
+      originalEmailId: emailId
+    });
     
     res.status(200).json({
       success: true,
-      message: 'Reply sent successfully',
-      data: {
-        id: replyRef.id,
-        ...replyData
-      }
+      data: result
     });
   } catch (error) {
     next(error);
@@ -434,73 +444,78 @@ export const replyToEmail = async (req: Request, res: Response, next: NextFuncti
  */
 export const forwardEmail = async (req: Request, res: Response, next: NextFunction) => {
   try {
-    const { emailId, to, content, cc, bcc, attachments } = req.body;
+    const { emailId, to, additionalComment, isHtml } = req.body;
     const userId = req.user?.uid;
     
-    if (!emailId) {
-      return next(createBadRequestError('Original email ID is required'));
+    if (!userId) {
+      return next(createAuthorizationError('User not authenticated'));
     }
     
-    if (!to) {
-      return next(createBadRequestError('Recipient (to) is required'));
+    if (!emailId || !to) {
+      return next(createBadRequestError('Email ID and recipient are required'));
     }
     
     // Get the original email
-    const originalEmailDoc = await emailsCollection.doc(emailId).get();
+    const emailDoc = await emailsCollection.doc(emailId).get();
     
-    if (!originalEmailDoc.exists) {
-      return next(createNotFoundError('Original email not found'));
+    if (!emailDoc.exists) {
+      return next(createNotFoundError('Email not found'));
     }
     
-    const originalEmail = originalEmailDoc.data();
+    const emailData = emailDoc.data();
     
-    // Check if user is authorized to access this email
-    if (originalEmail?.userId !== userId && !req.user?.role?.includes('admin')) {
-      return next(createNotFoundError('Original email not found'));
+    // Check if user has permission to access this email
+    if (emailData?.userId !== userId) {
+      return next(createAuthorizationError('You do not have permission to access this email'));
     }
     
-    // Create forwarded email content if not provided
-    const forwardedContent = content || `---------- Forwarded message ---------
-From: ${originalEmail.sender}
-Date: ${originalEmail.date.toISOString()}
-Subject: ${originalEmail.subject}
-To: ${originalEmail.recipient}
-
-${originalEmail.content}`;
+    // Construct the forwarded message
+    let forwardBody = '';
     
-    // Create the forwarded email record
-    const forwardData = {
-      subject: originalEmail.subject.startsWith('Fwd:') 
-        ? originalEmail.subject 
-        : `Fwd: ${originalEmail.subject}`,
-      content: forwardedContent,
-      sender: req.user?.email || '',
-      recipient: to,
-      cc: cc || [],
-      bcc: bcc || [],
-      hasAttachments: attachments && attachments.length > 0 || originalEmail.hasAttachments,
-      date: new Date(),
-      threadId: null, // Forwarded email starts a new thread
-      userId,
-      sent: true,
-      outgoing: true,
-      forwardedFrom: emailId,
-      createdAt: new Date(),
-      updatedAt: new Date()
-    };
+    if (additionalComment) {
+      forwardBody = additionalComment + (isHtml ? '<br><br>' : '\n\n');
+    }
     
-    // In a real application, we would call an email sending service here
+    // Add forwarded message header
+    const header = isHtml
+      ? `<p>---------- Forwarded message ----------</p>
+         <p>From: ${emailData.sender}<br>
+         Date: ${emailData.date instanceof Date ? emailData.date.toLocaleString('he-IL') : emailData.date}<br>
+         Subject: ${emailData.subject}<br>
+         To: ${emailData.recipient}</p><br>`
+      : `---------- Forwarded message ----------\n` +
+        `From: ${emailData.sender}\n` +
+        `Date: ${emailData.date instanceof Date ? emailData.date.toLocaleString('he-IL') : emailData.date}\n` +
+        `Subject: ${emailData.subject}\n` +
+        `To: ${emailData.recipient}\n\n`;
     
-    // Save the forwarded email to the database
-    const forwardRef = await emailsCollection.add(forwardData);
+    forwardBody += header + emailData.content;
+    
+    // Create the subject with Fwd: prefix if not already present
+    const subject = emailData.subject?.startsWith('Fwd:')
+      ? emailData.subject
+      : `Fwd: ${emailData.subject}`;
+    
+    // Send the forwarded email
+    const result = await emailService.sendEmail(
+      emailData.accountId,
+      to,
+      subject,
+      forwardBody,
+      {
+        isHtml: isHtml || false
+      }
+    );
+    
+    // Update the email metadata
+    await emailsCollection.doc(result.emailId).update({
+      isForward: true,
+      originalEmailId: emailId
+    });
     
     res.status(200).json({
       success: true,
-      message: 'Email forwarded successfully',
-      data: {
-        id: forwardRef.id,
-        ...forwardData
-      }
+      data: result
     });
   } catch (error) {
     next(error);
@@ -512,225 +527,76 @@ ${originalEmail.content}`;
  */
 export const saveDraft = async (req: Request, res: Response, next: NextFunction) => {
   try {
-    const { id, to, subject, content, cc, bcc, threadId } = req.body;
+    const { accountId, to, subject, body, cc, bcc, isHtml } = req.body;
     const userId = req.user?.uid;
     
-    // Create or update email draft
+    if (!userId) {
+      return next(createAuthorizationError('User not authenticated'));
+    }
+    
+    if (!accountId) {
+      return next(createBadRequestError('Account ID is required'));
+    }
+    
+    // Check if the account belongs to this user
+    const accountDoc = await emailAccountsCollection.doc(accountId).get();
+    
+    if (!accountDoc.exists) {
+      return next(createNotFoundError('Email account not found'));
+    }
+    
+    const accountData = accountDoc.data();
+    
+    if (accountData?.userId !== userId) {
+      return next(createAuthorizationError('You do not have permission to use this account'));
+    }
+    
+    // Create a draft email
     const draftData = {
-      subject: subject || '(No Subject)',
-      content: content || '',
-      sender: req.user?.email || '',
+      subject: subject || '',
+      content: body || '',
       recipient: to || '',
-      cc: cc || [],
-      bcc: bcc || [],
-      threadId: threadId || null,
+      cc: cc || '',
+      bcc: bcc || '',
+      isHtml: isHtml || false,
+      sender: accountData.email,
+      accountId,
       userId,
       isDraft: true,
-      sent: false,
       outgoing: true,
-      updatedAt: new Date()
-    };
-    
-    let draftRef;
-    
-    // If ID is provided, update existing draft
-    if (id) {
-      // Check if the draft exists and belongs to this user
-      const draftDoc = await emailsCollection.doc(id).get();
-      
-      if (!draftDoc.exists) {
-        return next(createNotFoundError('Draft not found'));
-      }
-      
-      const draftData = draftDoc.data();
-      
-      // Check if user is authorized to access this draft
-      if (draftData?.userId !== userId) {
-        return next(createNotFoundError('Draft not found'));
-      }
-      
-      // Update existing draft
-      await emailsCollection.doc(id).update({
-        ...draftData,
-        updatedAt: new Date()
-      });
-      
-      draftRef = emailsCollection.doc(id);
-    } else {
-      // Create new draft
-      draftData.createdAt = new Date();
-      draftRef = await emailsCollection.add(draftData);
-    }
-    
-    res.status(200).json({
-      success: true,
-      message: 'Draft saved successfully',
-      data: {
-        id: draftRef.id,
-        ...draftData
-      }
-    });
-  } catch (error) {
-    next(error);
-  }
-};
-
-/**
- * Get all email accounts (admin only)
- */
-export const getEmailAccounts = async (req: Request, res: Response, next: NextFunction) => {
-  try {
-    // Get all email accounts from database
-    const snapshot = await emailAccountsCollection.get();
-    
-    // Format results
-    const accounts = snapshot.docs.map(doc => ({
-      id: doc.id,
-      ...doc.data(),
-      // Exclude sensitive information like passwords or tokens
-      password: undefined,
-      accessToken: undefined,
-      refreshToken: undefined
-    }));
-    
-    res.status(200).json({
-      success: true,
-      count: accounts.length,
-      data: accounts
-    });
-  } catch (error) {
-    next(error);
-  }
-};
-
-/**
- * Add a new email account (admin only)
- */
-export const addEmailAccount = async (req: Request, res: Response, next: NextFunction) => {
-  try {
-    const { email, name, provider, server, port, username, password, oauth } = req.body;
-    
-    if (!email) {
-      return next(createBadRequestError('Email address is required'));
-    }
-    
-    if (!provider) {
-      return next(createBadRequestError('Email provider is required'));
-    }
-    
-    // Check if account already exists
-    const existingAccount = await emailAccountsCollection
-      .where('email', '==', email)
-      .limit(1)
-      .get();
-    
-    if (!existingAccount.empty) {
-      return next(createBadRequestError('An account with this email already exists'));
-    }
-    
-    // Create the account
-    const accountData = {
-      email,
-      name: name || email,
-      provider,
-      server: server || null,
-      port: port || null,
-      username: username || email,
-      // In a real app, you would encrypt the password before storing
-      password: password || null,
-      useOAuth: !!oauth,
-      active: true,
+      date: new Date(),
       createdAt: new Date(),
       updatedAt: new Date()
     };
     
-    // Save oauth data separately if provided
-    if (oauth) {
-      accountData['oauth'] = oauth;
+    let draftId = req.body.draftId; // For updating existing drafts
+    
+    if (draftId) {
+      // Check if the draft exists and belongs to the user
+      const draftDoc = await emailsCollection.doc(draftId).get();
+      
+      if (!draftDoc.exists || draftDoc.data()?.userId !== userId) {
+        draftId = null; // Create a new draft instead
+      } else {
+        await emailsCollection.doc(draftId).update({
+          ...draftData,
+          updatedAt: new Date()
+        });
+      }
     }
     
-    // Save to database
-    const accountRef = await emailAccountsCollection.add(accountData);
-    
-    // Return the new account (without sensitive data)
-    const returnData = {
-      ...accountData,
-      id: accountRef.id,
-      password: undefined
-    };
-    
-    res.status(201).json({
-      success: true,
-      data: returnData
-    });
-  } catch (error) {
-    next(error);
-  }
-};
-
-/**
- * Update an email account (admin only)
- */
-export const updateEmailAccount = async (req: Request, res: Response, next: NextFunction) => {
-  try {
-    const accountId = req.params.id;
-    const updateData = req.body;
-    
-    // Get the account
-    const accountDoc = await emailAccountsCollection.doc(accountId).get();
-    
-    if (!accountDoc.exists) {
-      return next(createNotFoundError('Email account not found'));
+    if (!draftId) {
+      // Create a new draft
+      const draftRef = await emailsCollection.add(draftData);
+      draftId = draftRef.id;
     }
-    
-    // Add updatedAt timestamp
-    updateData.updatedAt = new Date();
-    
-    // Update the account
-    await emailAccountsCollection.doc(accountId).update(updateData);
-    
-    // Get the updated account
-    const updatedDoc = await emailAccountsCollection.doc(accountId).get();
-    const updatedData = updatedDoc.data();
-    
-    // Return the updated account (without sensitive data)
-    const returnData = {
-      ...updatedData,
-      id: updatedDoc.id,
-      password: undefined,
-      accessToken: undefined,
-      refreshToken: undefined
-    };
     
     res.status(200).json({
       success: true,
-      data: returnData
-    });
-  } catch (error) {
-    next(error);
-  }
-};
-
-/**
- * Delete an email account (admin only)
- */
-export const deleteEmailAccount = async (req: Request, res: Response, next: NextFunction) => {
-  try {
-    const accountId = req.params.id;
-    
-    // Check if the account exists
-    const accountDoc = await emailAccountsCollection.doc(accountId).get();
-    
-    if (!accountDoc.exists) {
-      return next(createNotFoundError('Email account not found'));
-    }
-    
-    // Delete the account
-    await emailAccountsCollection.doc(accountId).delete();
-    
-    res.status(200).json({
-      success: true,
-      message: 'Email account deleted successfully'
+      data: {
+        id: draftId,
+        ...draftData
+      }
     });
   } catch (error) {
     next(error);
@@ -744,36 +610,25 @@ export const getEmailTemplates = async (req: Request, res: Response, next: NextF
   try {
     const userId = req.user?.uid;
     
-    // Get templates owned by this user or that are public
+    if (!userId) {
+      return next(createAuthorizationError('User not authenticated'));
+    }
+    
+    // Get templates for this user (and system templates)
     const snapshot = await emailTemplatesCollection
-      .where('userId', '==', userId)
-      .orderBy('name', 'asc')
+      .where('userId', 'in', [userId, 'system'])
+      .orderBy('name')
       .get();
     
-    // Get public templates
-    const publicSnapshot = await emailTemplatesCollection
-      .where('isPublic', '==', true)
-      .get();
-    
-    // Combine and remove duplicates
-    const userTemplates = snapshot.docs.map(doc => ({
+    const templates = snapshot.docs.map(doc => ({
       id: doc.id,
       ...doc.data()
     }));
     
-    const publicTemplates = publicSnapshot.docs
-      .filter(doc => doc.data().userId !== userId) // Remove user's own templates
-      .map(doc => ({
-        id: doc.id,
-        ...doc.data()
-      }));
-    
-    const allTemplates = [...userTemplates, ...publicTemplates];
-    
     res.status(200).json({
       success: true,
-      count: allTemplates.length,
-      data: allTemplates
+      count: templates.length,
+      data: templates
     });
   } catch (error) {
     next(error);
@@ -785,30 +640,30 @@ export const getEmailTemplates = async (req: Request, res: Response, next: NextF
  */
 export const createEmailTemplate = async (req: Request, res: Response, next: NextFunction) => {
   try {
-    const { name, subject, content, isPublic, category } = req.body;
+    const { name, description, subject, content, isHtml, language } = req.body;
     const userId = req.user?.uid;
     
-    if (!name) {
-      return next(createBadRequestError('Template name is required'));
+    if (!userId) {
+      return next(createAuthorizationError('User not authenticated'));
     }
     
-    if (!content) {
-      return next(createBadRequestError('Template content is required'));
+    if (!name || !subject || !content) {
+      return next(createBadRequestError('Name, subject, and content are required'));
     }
     
-    // Create the template
+    // Create template
     const templateData = {
       name,
-      subject: subject || '',
+      description: description || '',
+      subject,
       content,
-      isPublic: isPublic || false,
-      category: category || 'general',
+      isHtml: isHtml || false,
+      language: language || 'he',
       userId,
       createdAt: new Date(),
       updatedAt: new Date()
     };
     
-    // Save to database
     const templateRef = await emailTemplatesCollection.add(templateData);
     
     res.status(201).json({
@@ -828,38 +683,53 @@ export const createEmailTemplate = async (req: Request, res: Response, next: Nex
  */
 export const updateEmailTemplate = async (req: Request, res: Response, next: NextFunction) => {
   try {
-    const templateId = req.params.id;
-    const updateData = req.body;
+    const { id } = req.params;
+    const { name, description, subject, content, isHtml, language } = req.body;
     const userId = req.user?.uid;
     
+    if (!userId) {
+      return next(createAuthorizationError('User not authenticated'));
+    }
+    
     // Get the template
-    const templateDoc = await emailTemplatesCollection.doc(templateId).get();
+    const templateDoc = await emailTemplatesCollection.doc(id).get();
     
     if (!templateDoc.exists) {
-      return next(createNotFoundError('Email template not found'));
+      return next(createNotFoundError('Template not found'));
     }
     
     const templateData = templateDoc.data();
     
-    // Check if user is authorized to update this template
-    if (templateData?.userId !== userId && !req.user?.role?.includes('admin')) {
-      return next(createNotFoundError('Email template not found'));
+    // Check if user has permission to update this template
+    if (templateData?.userId !== userId && templateData?.userId !== 'system') {
+      return next(createAuthorizationError('You do not have permission to update this template'));
     }
     
-    // Add updatedAt timestamp
-    updateData.updatedAt = new Date();
+    // Cannot update system templates
+    if (templateData?.userId === 'system') {
+      return next(createAuthorizationError('System templates cannot be modified'));
+    }
     
     // Update the template
-    await emailTemplatesCollection.doc(templateId).update(updateData);
+    const updateData: any = {
+      updatedAt: new Date()
+    };
     
-    // Get the updated template
-    const updatedDoc = await emailTemplatesCollection.doc(templateId).get();
+    if (name) updateData.name = name;
+    if (description !== undefined) updateData.description = description;
+    if (subject) updateData.subject = subject;
+    if (content) updateData.content = content;
+    if (isHtml !== undefined) updateData.isHtml = isHtml;
+    if (language) updateData.language = language;
+    
+    await emailTemplatesCollection.doc(id).update(updateData);
     
     res.status(200).json({
       success: true,
       data: {
-        id: updatedDoc.id,
-        ...updatedDoc.data()
+        id,
+        ...templateData,
+        ...updateData
       }
     });
   } catch (error) {
@@ -872,29 +742,288 @@ export const updateEmailTemplate = async (req: Request, res: Response, next: Nex
  */
 export const deleteEmailTemplate = async (req: Request, res: Response, next: NextFunction) => {
   try {
-    const templateId = req.params.id;
+    const { id } = req.params;
     const userId = req.user?.uid;
     
+    if (!userId) {
+      return next(createAuthorizationError('User not authenticated'));
+    }
+    
     // Get the template
-    const templateDoc = await emailTemplatesCollection.doc(templateId).get();
+    const templateDoc = await emailTemplatesCollection.doc(id).get();
     
     if (!templateDoc.exists) {
-      return next(createNotFoundError('Email template not found'));
+      return next(createNotFoundError('Template not found'));
     }
     
     const templateData = templateDoc.data();
     
-    // Check if user is authorized to delete this template
-    if (templateData?.userId !== userId && !req.user?.role?.includes('admin')) {
-      return next(createNotFoundError('Email template not found'));
+    // Check if user has permission to delete this template
+    if (templateData?.userId !== userId) {
+      return next(createAuthorizationError('You do not have permission to delete this template'));
+    }
+    
+    // Cannot delete system templates
+    if (templateData?.userId === 'system') {
+      return next(createAuthorizationError('System templates cannot be deleted'));
     }
     
     // Delete the template
-    await emailTemplatesCollection.doc(templateId).delete();
+    await emailTemplatesCollection.doc(id).delete();
     
     res.status(200).json({
       success: true,
-      message: 'Email template deleted successfully'
+      message: 'Template deleted successfully'
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+/**
+ * Get all email accounts for the organization (admin only)
+ */
+export const getEmailAccounts = async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const userId = req.user?.uid;
+    
+    if (!userId) {
+      return next(createAuthorizationError('User not authenticated'));
+    }
+    
+    // Get accounts
+    const snapshot = await emailAccountsCollection.get();
+    
+    const accounts = snapshot.docs.map(doc => {
+      const data = doc.data();
+      // Hide sensitive information
+      return {
+        id: doc.id,
+        email: data.email,
+        username: data.username,
+        server: data.server,
+        port: data.port,
+        useOAuth: data.useOAuth,
+        userId: data.userId,
+        name: data.name,
+        active: data.active,
+        settings: data.settings,
+        createdAt: data.createdAt,
+        updatedAt: data.updatedAt
+      };
+    });
+    
+    res.status(200).json({
+      success: true,
+      count: accounts.length,
+      data: accounts
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+/**
+ * Add a new email account (admin only)
+ */
+export const addEmailAccount = async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const {
+      email,
+      username,
+      password,
+      server,
+      port,
+      useOAuth,
+      oauth,
+      userId: ownerUserId,
+      name,
+      settings
+    } = req.body;
+    const adminUserId = req.user?.uid;
+    
+    if (!adminUserId) {
+      return next(createAuthorizationError('User not authenticated'));
+    }
+    
+    if (!email || (!password && !useOAuth) || !server) {
+      return next(createBadRequestError('Email, server, and either password or OAuth are required'));
+    }
+    
+    // Create account
+    const accountData: any = {
+      email,
+      username: username || email,
+      password: password || null,
+      server,
+      port: port || 993,
+      useOAuth: useOAuth || false,
+      userId: ownerUserId || adminUserId,
+      name: name || email,
+      active: true,
+      settings: settings || {
+        autoProcessEmails: true,
+        deleteAfterProcessing: false
+      },
+      createdBy: adminUserId,
+      createdAt: new Date(),
+      updatedAt: new Date()
+    };
+    
+    if (useOAuth && oauth) {
+      accountData.oauth = oauth;
+    }
+    
+    const accountRef = await emailAccountsCollection.add(accountData);
+    
+    // Mask sensitive information in the response
+    delete accountData.password;
+    if (accountData.oauth) {
+      delete accountData.oauth.clientSecret;
+      delete accountData.oauth.refreshToken;
+      delete accountData.oauth.accessToken;
+    }
+    
+    // Try to connect to the account
+    try {
+      await emailService.connectToEmailAccount(accountRef.id);
+    } catch (error) {
+      console.error('Error connecting to account:', error);
+      // Continue anyway, connection can be retried later
+    }
+    
+    res.status(201).json({
+      success: true,
+      data: {
+        id: accountRef.id,
+        ...accountData
+      }
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+/**
+ * Update an email account (admin only)
+ */
+export const updateEmailAccount = async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const { id } = req.params;
+    const {
+      email,
+      username,
+      password,
+      server,
+      port,
+      useOAuth,
+      oauth,
+      userId: ownerUserId,
+      name,
+      active,
+      settings
+    } = req.body;
+    const adminUserId = req.user?.uid;
+    
+    if (!adminUserId) {
+      return next(createAuthorizationError('User not authenticated'));
+    }
+    
+    // Get the account
+    const accountDoc = await emailAccountsCollection.doc(id).get();
+    
+    if (!accountDoc.exists) {
+      return next(createNotFoundError('Email account not found'));
+    }
+    
+    // Update the account
+    const updateData: any = {
+      updatedAt: new Date()
+    };
+    
+    if (email) updateData.email = email;
+    if (username) updateData.username = username;
+    if (password) updateData.password = password;
+    if (server) updateData.server = server;
+    if (port) updateData.port = port;
+    if (useOAuth !== undefined) updateData.useOAuth = useOAuth;
+    if (oauth) updateData.oauth = oauth;
+    if (ownerUserId) updateData.userId = ownerUserId;
+    if (name) updateData.name = name;
+    if (active !== undefined) updateData.active = active;
+    if (settings) updateData.settings = settings;
+    
+    await emailAccountsCollection.doc(id).update(updateData);
+    
+    // If the account was deactivated, disconnect it
+    const originalData = accountDoc.data();
+    if (originalData?.active && updateData.active === false) {
+      emailService.disconnectFromEmailAccount(id);
+    }
+    
+    // If the account was activated, connect it
+    if (!originalData?.active && updateData.active === true) {
+      try {
+        await emailService.connectToEmailAccount(id);
+      } catch (error) {
+        console.error('Error connecting to account:', error);
+        // Continue anyway, connection can be retried later
+      }
+    }
+    
+    // Mask sensitive information in the response
+    const responseData = {
+      ...originalData,
+      ...updateData
+    };
+    
+    delete responseData.password;
+    if (responseData.oauth) {
+      delete responseData.oauth.clientSecret;
+      delete responseData.oauth.refreshToken;
+      delete responseData.oauth.accessToken;
+    }
+    
+    res.status(200).json({
+      success: true,
+      data: {
+        id,
+        ...responseData
+      }
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+/**
+ * Delete an email account (admin only)
+ */
+export const deleteEmailAccount = async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const { id } = req.params;
+    const adminUserId = req.user?.uid;
+    
+    if (!adminUserId) {
+      return next(createAuthorizationError('User not authenticated'));
+    }
+    
+    // Get the account
+    const accountDoc = await emailAccountsCollection.doc(id).get();
+    
+    if (!accountDoc.exists) {
+      return next(createNotFoundError('Email account not found'));
+    }
+    
+    // Disconnect if connected
+    emailService.disconnectFromEmailAccount(id);
+    
+    // Delete the account
+    await emailAccountsCollection.doc(id).delete();
+    
+    res.status(200).json({
+      success: true,
+      message: 'Email account deleted successfully'
     });
   } catch (error) {
     next(error);
