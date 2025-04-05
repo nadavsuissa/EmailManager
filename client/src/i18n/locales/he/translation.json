@@ -1,0 +1,163 @@
+{
+  "app": {
+    "title": "מנהל אימיילים",
+    "subtitle": "ניהול משימות חכם באמצעות בינה מלאכותית"
+  },
+  "navigation": {
+    "dashboard": "לוח בקרה",
+    "tasks": "משימות",
+    "emails": "אימיילים",
+    "settings": "הגדרות",
+    "profile": "פרופיל",
+    "logout": "התנתק"
+  },
+  "auth": {
+    "login": "התחבר",
+    "register": "הרשם",
+    "email": "אימייל",
+    "password": "סיסמה",
+    "confirmPassword": "אימות סיסמה",
+    "forgotPassword": "שכחת סיסמה?",
+    "resetPassword": "איפוס סיסמה",
+    "loginSuccess": "התחברת בהצלחה",
+    "registerSuccess": "נרשמת בהצלחה"
+  },
+  "dashboard": {
+    "welcome": "ברוך הבא, {{name}}",
+    "tasksSummary": "סיכום משימות",
+    "pendingTasks": "משימות ממתינות",
+    "completedTasks": "משימות שהושלמו",
+    "overdueTasks": "משימות באיחור",
+    "todayTasks": "משימות להיום",
+    "recentEmails": "אימיילים אחרונים",
+    "statistics": "סטטיסטיקה"
+  },
+  "tasks": {
+    "title": "משימות",
+    "newTask": "משימה חדשה",
+    "edit": "ערוך",
+    "delete": "מחק",
+    "status": "סטטוס",
+    "priority": "עדיפות",
+    "dueDate": "תאריך יעד",
+    "assignedTo": "משויך ל",
+    "description": "תיאור",
+    "createdFrom": "נוצר מ",
+    "statuses": {
+      "open": "פתוח",
+      "inProgress": "בתהליך",
+      "completed": "הושלם",
+      "cancelled": "בוטל"
+    },
+    "priorities": {
+      "low": "נמוך",
+      "medium": "בינוני",
+      "high": "גבוה",
+      "urgent": "דחוף"
+    },
+    "empty": "אין משימות להצגה",
+    "createSuccess": "המשימה נוצרה בהצלחה",
+    "updateSuccess": "המשימה עודכנה בהצלחה",
+    "deleteSuccess": "המשימה נמחקה בהצלחה",
+    "confirmDelete": "האם אתה בטוח שברצונך למחוק משימה זו?"
+  },
+  "emails": {
+    "title": "אימיילים",
+    "inbox": "דואר נכנס",
+    "sent": "דואר שנשלח",
+    "drafts": "טיוטות",
+    "compose": "כתוב אימייל",
+    "subject": "נושא",
+    "to": "אל",
+    "cc": "עותק",
+    "bcc": "עותק מוסתר",
+    "body": "תוכן",
+    "send": "שלח",
+    "save": "שמור טיוטה",
+    "from": "מאת",
+    "date": "תאריך",
+    "noEmails": "אין אימיילים להצגה",
+    "extractedTask": "משימה שחולצה",
+    "createTask": "צור משימה",
+    "replyTo": "השב",
+    "forward": "העבר",
+    "sendSuccess": "האימייל נשלח בהצלחה",
+    "draftSaved": "הטיוטה נשמרה בהצלחה"
+  },
+  "settings": {
+    "title": "הגדרות",
+    "language": "שפה",
+    "theme": "ערכת נושא",
+    "notifications": "התראות",
+    "emailSettings": "הגדרות אימייל",
+    "emailAccounts": "חשבונות אימייל",
+    "addEmailAccount": "הוסף חשבון אימייל",
+    "smtpSettings": "הגדרות SMTP",
+    "updateSuccess": "ההגדרות עודכנו בהצלחה",
+    "themes": {
+      "light": "בהיר",
+      "dark": "כהה",
+      "auto": "אוטומטי"
+    }
+  },
+  "profile": {
+    "title": "פרופיל",
+    "personalInfo": "מידע אישי",
+    "firstName": "שם פרטי",
+    "lastName": "שם משפחה",
+    "email": "אימייל",
+    "phone": "טלפון",
+    "changePassword": "שנה סיסמה",
+    "currentPassword": "סיסמה נוכחית",
+    "newPassword": "סיסמה חדשה",
+    "confirmNewPassword": "אימות סיסמה חדשה",
+    "updateSuccess": "הפרופיל עודכן בהצלחה",
+    "passwordChangeSuccess": "הסיסמה שונתה בהצלחה"
+  },
+  "common": {
+    "save": "שמור",
+    "cancel": "ביטול",
+    "create": "צור",
+    "update": "עדכן",
+    "search": "חיפוש",
+    "filter": "סינון",
+    "sortBy": "מיון לפי",
+    "actions": "פעולות",
+    "loading": "טוען...",
+    "success": "הצלחה",
+    "error": "שגיאה",
+    "warning": "אזהרה",
+    "info": "מידע",
+    "confirm": "אישור",
+    "noResults": "אין תוצאות",
+    "selectOption": "בחר אפשרות",
+    "all": "הכל",
+    "today": "היום",
+    "yesterday": "אתמול",
+    "tomorrow": "מחר",
+    "thisWeek": "השבוע",
+    "nextWeek": "שבוע הבא",
+    "thisMonth": "החודש",
+    "custom": "מותאם אישית"
+  },
+  "ai": {
+    "taskExtraction": "חילוץ משימות",
+    "priorityAnalysis": "ניתוח עדיפות",
+    "followupSuggestion": "הצעה למעקב",
+    "analyzing": "מנתח את התוכן...",
+    "extractionSuccess": "משימות חולצו בהצלחה",
+    "noTasksFound": "לא נמצאו משימות באימייל זה",
+    "generateResponse": "צור תשובה אוטומטית",
+    "responseGenerated": "תשובה נוצרה בהצלחה"
+  },
+  "errors": {
+    "required": "שדה חובה",
+    "invalidEmail": "אימייל לא תקין",
+    "passwordMismatch": "הסיסמאות אינן תואמות",
+    "invalidCredentials": "שם משתמש או סיסמה שגויים",
+    "generalError": "אירעה שגיאה. אנא נסה שנית מאוחר יותר",
+    "networkError": "בעיית תקשורת. אנא בדוק את החיבור לאינטרנט",
+    "authRequired": "עליך להתחבר כדי לגשת לעמוד זה",
+    "permissionDenied": "אין לך הרשאות מתאימות"
+  }
+} 

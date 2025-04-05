@@ -1,0 +1,104 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Function to check if the user is authenticated
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+    
+    // Function to check if the user is accessing their own data
+    function isUser(userId) {
+      return isAuthenticated() && request.auth.uid == userId;
+    }
+    
+    // Check if user is an admin
+    function isAdmin() {
+      return isAuthenticated() && 
+        exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
+        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin';
+    }
+    
+    // Check if user is a manager
+    function isManager() {
+      return isAuthenticated() && 
+        exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
+        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'manager';
+    }
+    
+    // Check if user is a member of a team
+    function isTeamMember(teamId) {
+      return isAuthenticated() && 
+        exists(/databases/$(database)/documents/teams/$(teamId)) &&
+        request.auth.uid in get(/databases/$(database)/documents/teams/$(teamId)).data.members;
+    }
+    
+    // Users collection rules
+    match /users/{userId} {
+      allow read: if isUser(userId) || isAdmin() || isManager();
+      allow create: if isAuthenticated();
+      allow update: if isUser(userId) || isAdmin();
+      allow delete: if isAdmin();
+    }
+    
+    // Tasks collection rules
+    match /tasks/{taskId} {
+      allow read: if isAuthenticated() && 
+                  (resource.data.assignedToUserId == request.auth.uid || 
+                   resource.data.assignedByUserId == request.auth.uid || 
+                   isAdmin() || 
+                   isManager() || 
+                   isTeamMember(resource.data.team));
+      allow create: if isAuthenticated();
+      allow update: if isAuthenticated() && 
+                    (resource.data.assignedToUserId == request.auth.uid || 
+                     resource.data.assignedByUserId == request.auth.uid || 
+                     isAdmin() || 
+                     isManager());
+      allow delete: if isAdmin() || isManager() || resource.data.assignedByUserId == request.auth.uid;
+    }
+    
+    // Email templates collection rules
+    match /emailTemplates/{templateId} {
+      allow read: if isAuthenticated();
+      allow create, update: if isAdmin() || isManager();
+      allow delete: if isAdmin();
+    }
+    
+    // Organizations collection rules
+    match /organizations/{orgId} {
+      allow read: if isAuthenticated() && 
+                  (request.auth.uid in resource.data.members || 
+                   isAdmin());
+      allow create: if isAdmin();
+      allow update: if isAdmin() || resource.data.ownerId == request.auth.uid;
+      allow delete: if isAdmin();
+    }
+    
+    // Teams collection rules
+    match /teams/{teamId} {
+      allow read: if isAuthenticated() && 
+                  (request.auth.uid in resource.data.members || 
+                   isAdmin() || 
+                   isManager());
+      allow create: if isAdmin() || isManager();
+      allow update: if isAdmin() || isManager() || resource.data.managerId == request.auth.uid;
+      allow delete: if isAdmin() || resource.data.managerId == request.auth.uid;
+    }
+    
+    // Activity logs collection rules
+    match /activityLogs/{logId} {
+      allow read: if isAdmin() || isManager();
+      allow create: if isAuthenticated();
+      allow update, delete: if isAdmin();
+    }
+    
+    // Notifications collection rules
+    match /notifications/{notificationId} {
+      allow read: if isAuthenticated() && resource.data.userId == request.auth.uid;
+      allow create: if isAuthenticated();
+      allow update: if isAuthenticated() && resource.data.userId == request.auth.uid;
+      allow delete: if isAuthenticated() && resource.data.userId == request.auth.uid;
+    }
+  }
+} 

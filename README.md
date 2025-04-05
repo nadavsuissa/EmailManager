@@ -1,81 +1,123 @@
-# EmailManager - AI-Powered Task Management System
+# Email Manager
 
-EmailManager is a sophisticated CRM-like web system that integrates with email communications to automatically extract, track, and manage tasks through AI. The system is fully implemented in Hebrew with RTL (Right-to-Left) support.
+A modern email management system that uses AI to extract tasks from emails, analyze priorities, and generate follow-up messages. The application supports both Hebrew and English content.
 
-## 🌟 Features
+## Project Structure
 
-- **Hebrew Interface**: Complete Hebrew language support with RTL layout
-- **Email Integration**: Capture tasks directly from email threads
-- **AI Task Extraction**: Automatically extract tasks, deadlines, and relevant information using OpenAI
-- **Multilingual Support**: Process emails in both Hebrew and English
-- **User Management**: Complete user profiles with role-based permissions
-- **Task Dashboard**: Comprehensive task management interface
-- **Automated Follow-ups**: Send reminders and request updates automatically in Hebrew
-- **Analytics**: Track task completion rates and performance metrics
+The project is organized into the following main directories:
 
-## 🛠 Tech Stack
+- `client/`: React-based frontend application
+- `server/`: Node.js/Express backend server
+- `functions/`: Firebase Cloud Functions
+- `shared/`: Shared code, types, and configurations used across all parts of the application
 
-- **Frontend**: React.js with TypeScript (with RTL support libraries)
-- **Backend**: Node.js & Express
-- **Database**: Firebase Firestore
-- **Authentication**: Firebase Authentication
-- **AI Processing**: OpenAI API with Hebrew language model support
-- **Email Integration**: Node Mailer / Email API with Hebrew character support
-- **Deployment**: Firebase Hosting / Cloud Functions
-- **Localization**: i18next or similar for Hebrew language management
-
-## 🚀 Getting Started
+## Setup
 
 ### Prerequisites
 
-- Node.js (v14+)
-- Firebase account
+- Node.js (v14 or higher)
+- npm or yarn
+- Firebase CLI (for deploying functions)
 - OpenAI API key
-- Email service account
-- Hebrew font support and RTL capabilities
+
+### Environment Configuration
+
+1. Copy the example environment file:
+```bash
+cp shared/config/.env.example .env
+```
+
+2. Edit the `.env` file and fill in your API keys and configuration values
 
 ### Installation
 
-1. Clone the repository
-   ```bash
-   git clone https://github.com/yourusername/email-manager.git
-   cd email-manager
-   ```
+1. Install dependencies in all parts of the application:
 
-2. Install dependencies
-   ```bash
-   npm install
-   ```
+```bash
+# Install root dependencies
+npm install
 
-3. Set up environment variables
-   ```bash
-   cp .env.example .env
-   # Edit .env with your Firebase and OpenAI credentials
-   ```
+# Install client dependencies
+cd client
+npm install
 
-4. Run development server
-   ```bash
-   npm run dev
-   ```
+# Install server dependencies
+cd ../server
+npm install
 
-## 📂 Project Structure
-
-```
-email-manager/
-├── client/                # React frontend with Hebrew RTL support
-├── server/                # Node.js backend
-├── functions/             # Firebase Cloud Functions
-├── shared/                # Shared types and utilities
-├── locales/               # Hebrew language files and translations
-├── scripts/               # Development and deployment scripts
-├── docs/                  # Documentation (in Hebrew)
-└── config/                # Configuration files
+# Install functions dependencies
+cd ../functions
+npm install
 ```
 
-## 📝 License
+2. Build the shared modules (if needed):
 
-This project is licensed under the MIT License - see the LICENSE file for details.
+```bash
+cd shared
+npm install
+npm run build
+```
 
-## 🤝 Contributing
+### Running the Application
 
-Contributions are welcome! Please feel free to submit a Pull Request. Hebrew language contributions especially appreciated. 
+#### Development Mode
+
+1. Start the client:
+```bash
+cd client
+npm start
+```
+
+2. Start the server:
+```bash
+cd server
+npm run dev
+```
+
+3. Emulate Firebase functions (optional):
+```bash
+cd functions
+npm run serve
+```
+
+#### Production Mode
+
+1. Build the client:
+```bash
+cd client
+npm run build
+```
+
+2. Build the server:
+```bash
+cd server
+npm run build
+```
+
+3. Deploy Firebase functions:
+```bash
+cd functions
+npm run deploy
+```
+
+## Features
+
+- Task extraction from email content with AI
+- Priority analysis for extracted tasks
+- Automated follow-up email generation
+- Support for both Hebrew and English content
+- Real-time updates with Firebase
+- Secure authentication and data storage
+
+## Architecture
+
+The application follows a modular architecture:
+
+1. **Client**: React-based frontend that provides the user interface
+2. **Server**: Node.js/Express backend that handles API requests and business logic
+3. **Firebase Functions**: Serverless functions for processing email content with OpenAI
+4. **Shared Module**: Common code shared between client, server, and functions
+
+## License
+
+This project is licensed under the MIT License - see the LICENSE file for details. 

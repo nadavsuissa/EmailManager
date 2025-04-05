@@ -1,0 +1,66 @@
+rules_version = '2';
+service firebase.storage {
+  match /b/{bucket}/o {
+    // Function to check if the user is authenticated
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+    
+    // Function to check if the user is accessing their own data
+    function isUser(userId) {
+      return isAuthenticated() && request.auth.uid == userId;
+    }
+    
+    // Check if user is an admin - needs a Firestore read
+    function isAdmin() {
+      return isAuthenticated() && 
+        firestore.exists(/databases/(default)/documents/users/$(request.auth.uid)) &&
+        firestore.get(/databases/(default)/documents/users/$(request.auth.uid)).data.role == 'admin';
+    }
+    
+    // Check if user is a manager
+    function isManager() {
+      return isAuthenticated() && 
+        firestore.exists(/databases/(default)/documents/users/$(request.auth.uid)) &&
+        firestore.get(/databases/(default)/documents/users/$(request.auth.uid)).data.role == 'manager';
+    }
+    
+    // User profile images
+    match /users/{userId}/profile/{fileName} {
+      allow read: if isAuthenticated();
+      allow write: if isUser(userId) || isAdmin();
+    }
+    
+    // Task attachments
+    match /tasks/{taskId}/attachments/{fileName} {
+      allow read: if isAuthenticated() && (
+        // Check if the user is assigned to the task, created the task, or is admin/manager
+        let task = firestore.get(/databases/(default)/documents/tasks/$(taskId));
+        task.data.assignedToUserId == request.auth.uid || 
+        task.data.assignedByUserId == request.auth.uid || 
+        isAdmin() || 
+        isManager()
+      );
+      allow write: if isAuthenticated() && (
+        let task = firestore.get(/databases/(default)/documents/tasks/$(taskId));
+        task.data.assignedByUserId == request.auth.uid || 
+        isAdmin() || 
+        isManager()
+      );
+    }
+    
+    // Organization logos
+    match /organizations/{orgId}/logo/{fileName} {
+      allow read: if isAuthenticated();
+      allow write: if isAdmin() || (
+        let org = firestore.get(/databases/(default)/documents/organizations/$(orgId));
+        org.data.ownerId == request.auth.uid
+      );
+    }
+    
+    // Default deny
+    match /{allPaths=**} {
+      allow read, write: if false;
+    }
+  }
+} 

@@ -1,0 +1,28 @@
+{
+  "name": "email-manager-shared",
+  "version": "1.0.0",
+  "description": "Shared modules for Email Manager",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "scripts": {
+    "build": "tsc",
+    "watch": "tsc -w",
+    "clean": "rimraf dist",
+    "prebuild": "npm run clean",
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [
+    "shared",
+    "types",
+    "config"
+  ],
+  "author": "",
+  "license": "MIT",
+  "devDependencies": {
+    "rimraf": "^5.0.1",
+    "typescript": "^5.0.0"
+  },
+  "dependencies": {
+    "dotenv": "^16.3.1"
+  }
+} 
