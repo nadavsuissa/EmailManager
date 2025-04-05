@@ -1,128 +1,215 @@
-import { createSlice, PayloadAction } from '@reduxjs/toolkit';
-import { Task, TaskFilter, TaskSort } from '@/types/task';
+import { createSlice, createAsyncThunk, PayloadAction } from '@reduxjs/toolkit';
+import { Task, TaskStatus, TaskPriority } from '../../types/task';
+import { RootState } from '../store';
+import { api } from '../../services/api';
 
-// Define the tasks state interface
 interface TasksState {
   tasks: Task[];
-  currentTask: Task | null;
-  totalTasks: number;
   loading: boolean;
   error: string | null;
-  filter: TaskFilter;
-  sort: TaskSort;
-  page: number;
-  limit: number;
-  hasMore: boolean;
+  currentTask: Task | null;
+  filterStatus: TaskStatus | 'all';
+  filterPriority: TaskPriority | 'all';
+  searchTerm: string;
+  view: 'list' | 'board' | 'calendar';
 }
 
-// Define the initial state
+// Async thunks for API calls
+export const fetchTasks = createAsyncThunk(
+  'tasks/fetchTasks',
+  async (_, { rejectWithValue }) => {
+    try {
+      // Replace with actual API call when backend is ready
+      const response = await api.get('/tasks');
+      return response.data;
+    } catch (error: any) {
+      return rejectWithValue(error.response?.data?.message || 'Failed to fetch tasks');
+    }
+  }
+);
+
+export const createTask = createAsyncThunk(
+  'tasks/createTask',
+  async (task: Partial<Task>, { rejectWithValue }) => {
+    try {
+      // Replace with actual API call when backend is ready
+      const response = await api.post('/tasks', task);
+      return response.data;
+    } catch (error: any) {
+      return rejectWithValue(error.response?.data?.message || 'Failed to create task');
+    }
+  }
+);
+
+export const updateTask = createAsyncThunk(
+  'tasks/updateTask',
+  async ({ id, task }: { id: string; task: Partial<Task> }, { rejectWithValue }) => {
+    try {
+      // Replace with actual API call when backend is ready
+      const response = await api.put(`/tasks/${id}`, task);
+      return response.data;
+    } catch (error: any) {
+      return rejectWithValue(error.response?.data?.message || 'Failed to update task');
+    }
+  }
+);
+
+export const deleteTask = createAsyncThunk(
+  'tasks/deleteTask',
+  async (id: string, { rejectWithValue }) => {
+    try {
+      // Replace with actual API call when backend is ready
+      await api.delete(`/tasks/${id}`);
+      return id;
+    } catch (error: any) {
+      return rejectWithValue(error.response?.data?.message || 'Failed to delete task');
+    }
+  }
+);
+
+// Initial state
 const initialState: TasksState = {
   tasks: [],
-  currentTask: null,
-  totalTasks: 0,
   loading: false,
   error: null,
-  filter: {},
-  sort: { field: 'createdAt', direction: 'desc' },
-  page: 1,
-  limit: 20,
-  hasMore: false,
+  currentTask: null,
+  filterStatus: 'all',
+  filterPriority: 'all',
+  searchTerm: '',
+  view: 'list',
 };
 
-// Create the tasks slice
-const tasksSlice = createSlice({
+// Create slice
+export const tasksSlice = createSlice({
   name: 'tasks',
   initialState,
   reducers: {
-    fetchTasksStart: (state) => {
-      state.loading = true;
-      state.error = null;
-    },
-    fetchTasksSuccess: (state, action: PayloadAction<{ tasks: Task[]; total: number; hasMore: boolean }>) => {
-      state.loading = false;
-      state.tasks = action.payload.tasks;
-      state.totalTasks = action.payload.total;
-      state.hasMore = action.payload.hasMore;
-      state.error = null;
-    },
-    appendTasks: (state, action: PayloadAction<{ tasks: Task[]; hasMore: boolean }>) => {
-      state.loading = false;
-      state.tasks = [...state.tasks, ...action.payload.tasks];
-      state.hasMore = action.payload.hasMore;
-      state.error = null;
-    },
-    fetchTasksFailure: (state, action: PayloadAction<string>) => {
-      state.loading = false;
-      state.error = action.payload;
-    },
     setCurrentTask: (state, action: PayloadAction<Task | null>) => {
       state.currentTask = action.payload;
     },
-    addTask: (state, action: PayloadAction<Task>) => {
-      state.tasks = [action.payload, ...state.tasks];
-      state.totalTasks += 1;
+    setFilterStatus: (state, action: PayloadAction<TaskStatus | 'all'>) => {
+      state.filterStatus = action.payload;
     },
-    updateTask: (state, action: PayloadAction<Task>) => {
-      state.tasks = state.tasks.map((task) =>
-        task.id === action.payload.id ? action.payload : task
-      );
-      
-      if (state.currentTask && state.currentTask.id === action.payload.id) {
-        state.currentTask = action.payload;
-      }
+    setFilterPriority: (state, action: PayloadAction<TaskPriority | 'all'>) => {
+      state.filterPriority = action.payload;
     },
-    deleteTask: (state, action: PayloadAction<string>) => {
-      state.tasks = state.tasks.filter((task) => task.id !== action.payload);
-      state.totalTasks -= 1;
-      
-      if (state.currentTask && state.currentTask.id === action.payload) {
-        state.currentTask = null;
-      }
+    setSearchTerm: (state, action: PayloadAction<string>) => {
+      state.searchTerm = action.payload;
     },
-    setFilter: (state, action: PayloadAction<TaskFilter>) => {
-      state.filter = action.payload;
-      state.page = 1; // Reset pagination when filter changes
+    setView: (state, action: PayloadAction<'list' | 'board' | 'calendar'>) => {
+      state.view = action.payload;
     },
-    setSort: (state, action: PayloadAction<TaskSort>) => {
-      state.sort = action.payload;
-      state.page = 1; // Reset pagination when sort changes
+    clearFilters: (state) => {
+      state.filterStatus = 'all';
+      state.filterPriority = 'all';
+      state.searchTerm = '';
     },
-    setPage: (state, action: PayloadAction<number>) => {
-      state.page = action.payload;
-    },
-    setLimit: (state, action: PayloadAction<number>) => {
-      state.limit = action.payload;
-      state.page = 1; // Reset pagination when limit changes
-    },
-    clearTasks: (state) => {
-      state.tasks = [];
-      state.totalTasks = 0;
-      state.currentTask = null;
-      state.page = 1;
-      state.hasMore = false;
-    },
-    clearTasksError: (state) => {
-      state.error = null;
-    },
+  },
+  extraReducers: (builder) => {
+    // Handle fetchTasks
+    builder
+      .addCase(fetchTasks.pending, (state) => {
+        state.loading = true;
+        state.error = null;
+      })
+      .addCase(fetchTasks.fulfilled, (state, action) => {
+        state.loading = false;
+        state.tasks = action.payload;
+      })
+      .addCase(fetchTasks.rejected, (state, action) => {
+        state.loading = false;
+        state.error = action.payload as string;
+      });
+
+    // Handle createTask
+    builder
+      .addCase(createTask.pending, (state) => {
+        state.loading = true;
+        state.error = null;
+      })
+      .addCase(createTask.fulfilled, (state, action) => {
+        state.loading = false;
+        state.tasks.push(action.payload);
+      })
+      .addCase(createTask.rejected, (state, action) => {
+        state.loading = false;
+        state.error = action.payload as string;
+      });
+
+    // Handle updateTask
+    builder
+      .addCase(updateTask.pending, (state) => {
+        state.loading = true;
+        state.error = null;
+      })
+      .addCase(updateTask.fulfilled, (state, action) => {
+        state.loading = false;
+        const index = state.tasks.findIndex((task) => task.id === action.payload.id);
+        if (index !== -1) {
+          state.tasks[index] = action.payload;
+        }
+      })
+      .addCase(updateTask.rejected, (state, action) => {
+        state.loading = false;
+        state.error = action.payload as string;
+      });
+
+    // Handle deleteTask
+    builder
+      .addCase(deleteTask.pending, (state) => {
+        state.loading = true;
+        state.error = null;
+      })
+      .addCase(deleteTask.fulfilled, (state, action) => {
+        state.loading = false;
+        state.tasks = state.tasks.filter((task) => task.id !== action.payload);
+      })
+      .addCase(deleteTask.rejected, (state, action) => {
+        state.loading = false;
+        state.error = action.payload as string;
+      });
   },
 });
 
-// Export actions and reducer
+// Export actions
 export const {
-  fetchTasksStart,
-  fetchTasksSuccess,
-  appendTasks,
-  fetchTasksFailure,
   setCurrentTask,
-  addTask,
-  updateTask,
-  deleteTask,
-  setFilter,
-  setSort,
-  setPage,
-  setLimit,
-  clearTasks,
-  clearTasksError,
+  setFilterStatus,
+  setFilterPriority,
+  setSearchTerm,
+  setView,
+  clearFilters,
 } = tasksSlice.actions;
+
+// Selectors
+export const selectTasks = (state: RootState) => state.tasks.tasks;
+export const selectFilteredTasks = (state: RootState) => {
+  const { tasks, filterStatus, filterPriority, searchTerm } = state.tasks;
+  
+  return tasks.filter((task) => {
+    // Filter by status
+    if (filterStatus !== 'all' && task.status !== filterStatus) {
+      return false;
+    }
+    
+    // Filter by priority
+    if (filterPriority !== 'all' && task.priority !== filterPriority) {
+      return false;
+    }
+    
+    // Search term (case insensitive)
+    if (searchTerm && !task.title.toLowerCase().includes(searchTerm.toLowerCase()) &&
+        !task.description?.toLowerCase().includes(searchTerm.toLowerCase())) {
+      return false;
+    }
+    
+    return true;
+  });
+};
+
+export const selectLoading = (state: RootState) => state.tasks.loading;
+export const selectError = (state: RootState) => state.tasks.error;
+export const selectCurrentTask = (state: RootState) => state.tasks.currentTask;
+export const selectView = (state: RootState) => state.tasks.view;
 
 export default tasksSlice.reducer; 

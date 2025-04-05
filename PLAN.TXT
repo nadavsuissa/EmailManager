@@ -60,16 +60,16 @@
   - [x] 3.1.3. Set up component library and styling approach
   - [x] 3.1.4. Implement RTL support and responsive design framework
   - [x] 3.1.5. Configure Hebrew fonts and typography
-- [ ] 3.2. Create authentication and user management UI
-  - [ ] 3.2.1. Build login and registration forms in Hebrew
-  - [ ] 3.2.2. Develop user profile management interface
-  - [ ] 3.2.3. Implement role management for admins
-  - [ ] 3.2.4. Create team/organization management screens
-- [ ] 3.3. Develop task management dashboard
-  - [ ] 3.3.1. Build main dashboard with task overview (RTL layout)
-  - [ ] 3.3.2. Create detailed task view and edit interfaces
-  - [ ] 3.3.3. Implement filtering, sorting, and search functionality for Hebrew text
-  - [ ] 3.3.4. Develop calendar and timeline views (with Hebrew date formats)
+- [x] 3.2. Create authentication and user management UI
+  - [x] 3.2.1. Build login and registration forms in Hebrew
+  - [x] 3.2.2. Develop user profile management interface
+  - [x] 3.2.3. Implement role management for admins
+  - [x] 3.2.4. Create team/organization management screens
+- [x] 3.3. Develop task management dashboard
+  - [x] 3.3.1. Build main dashboard with task overview (RTL layout)
+  - [x] 3.3.2. Create detailed task view and edit interfaces
+  - [x] 3.3.3. Implement filtering, sorting, and search functionality for Hebrew text
+  - [x] 3.3.4. Develop calendar and timeline views (with Hebrew date formats)
 - [ ] 3.4. Implement email integration UI
   - [ ] 3.4.1. Create email connection setup wizard in Hebrew
   - [ ] 3.4.2. Build email tagging interface
